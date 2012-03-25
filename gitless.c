@@ -1,5 +1,5 @@
 /*
- * git-less - a specialized pager for git-log
+ * gitless - a specialized pager for git-log
  *
  * Copyright (C) 2012 Hitoshi Mitake <h.mitake@gmail.com>
  *
