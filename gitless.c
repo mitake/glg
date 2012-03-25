@@ -331,15 +331,10 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 	}
 }
 
-static int read_end;
-
 static int contain_etx(int begin, int end)
 {
 	int i;
 	static int state = 0;
-
-	if (read_end)
-		return end;
 
 	for (i = begin; i < end; i++) {
 		switch (state) {
@@ -412,6 +407,8 @@ static void read_commit(void)
 	int prev_logbuf_used, first_logbuf_used;
 	struct commit *new_commit;
 
+	static int read_end;
+
 	if (read_end)
 		return;
 
@@ -450,6 +447,9 @@ static void read_commit(void)
 			read_end = 1;
 			if (first_logbuf_used == logbuf_used)
 				return;
+
+			last_etx = logbuf_used;
+			break;
 		}
 
 		prev_logbuf_used = logbuf_used;
