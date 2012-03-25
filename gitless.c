@@ -334,19 +334,21 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 static int contain_etx(int begin, int end)
 {
 	int i;
-	static int state = 0;	/* state ... 0: init, 1: \n */
+	static int state = 0;
 
 	for (i = begin; i < end; i++) {
 		switch (state) {
 		case 0:
 			if (logbuf[i] == '\n')
 				state = 1;
-
 			break;
 		case 1:
-			state = 0;
-			if (logbuf[i] == 'c')
-				return i - 1;
+			if (logbuf[i] != '\n') {
+				state = 0;
+
+				if (logbuf[i] == 'c')
+					return i - 1;
+			}
 
 			break;
 		default:
@@ -380,8 +382,12 @@ static void read_head(void)
 				die("read() failed");
 		}
 
-		if (!rbyte)
-			exit(0); /* no input */
+		if (!rbyte) {
+			if (logbuf_used)
+				break;
+			else
+				exit(0); /* no input */
+		}
 
 		prev_logbuf_used = logbuf_used;
 		logbuf_used += rbyte;
