@@ -1,0 +1,7 @@
+
+sample configuration (shell rc):
+       alias git-lg="git log -p | gitless"
+
+todo:
+	handling colored output
+	sane terminals support
