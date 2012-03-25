@@ -29,21 +29,13 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <signal.h>
-#include <errno.h>
 
 #include <assert.h>
 
 #include <regex.h>
 
-extern int errno;
-
-#define die(fmt, arg...)						\
-	do {                                                            \
-		fprintf(stderr, "line %d: fatal error, " fmt "\n",	\
-			__LINE__, ##arg);				\
-		fprintf(stderr, "errno: %s\n", strerror(errno));	\
-		exit(1);						\
-	} while (0)
+#include "misc.h"
+#include "tty.h"
 
 static void *xalloc(size_t size)
 {
@@ -76,7 +68,12 @@ static int ret_nl_index(char *s)
 	return i;
 }
 
-static int stdin_fd = 0, tty_fd, debug_fd;
+static int stdin_fd = 0, tty_fd;
+
+#ifdef GIT_LESS_DEBUG
+static int debug_fd;
+#endif
+
 static unsigned int row, col;
 static int running = 1;
 static int searching;
@@ -334,23 +331,41 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 static int contain_etx(int begin, int end)
 {
 	int i;
-	static int state = 0;
+
+	enum {
+		STATE_INIT,
+		STATE_AFTER_NL,
+	};
+	static int state = STATE_INIT;
+	static int tty_state = TTY_STATE_INIT;
+
+	if (tty_state != TTY_STATE_INIT)
+		begin += tty_state_trans(&tty_state, &logbuf[begin], end);
 
 	for (i = begin; i < end; i++) {
 		switch (state) {
-		case 0:
+		case STATE_INIT:
 			if (logbuf[i] == '\n')
-				state = 1;
+				state = STATE_AFTER_NL;
+			else if (logbuf[i] == ESC) {
+				i += tty_state_trans(&tty_state,
+						&logbuf[i], end);
+			}
 			break;
-		case 1:
-			if (logbuf[i] != '\n') {
-				state = 0;
 
-				if (logbuf[i] == 'c')
+		case STATE_AFTER_NL:
+			if (logbuf[i] != '\n') {
+				if (logbuf[i] == ESC) {
+					i += tty_state_trans(&tty_state,
+							&logbuf[i], end);
+				} else if (logbuf[i] == 'c') {
+					state = STATE_INIT;
 					return i - 1;
+				}
 			}
 
 			break;
+
 		default:
 			die("unknown state: %d", state);
 			break;
