@@ -445,10 +445,8 @@ static void read_commit(void)
 
 		if (!rbyte) {
 			read_end = 1;
-			if (first_logbuf_used == logbuf_used)
-				return;
-
 			last_etx = logbuf_used;
+
 			break;
 		}
 

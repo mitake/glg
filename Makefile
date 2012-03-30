@@ -12,6 +12,9 @@ default: $(OBJS)
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
+install:
+	sudo cp gitless /usr/local/bin
+
 cscope:
 	find . -name "*.[ch]" > cscope.files
 	cscope -b -q
