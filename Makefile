@@ -6,13 +6,15 @@ CFLAGS = -O2 -Wall
 
 CC = gcc
 
-default: $(OBJS)
+default: gitless
+
+gitless: $(OBJS)
 	$(CC) -o gitless $(OBJS)
 
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
-install:
+install: gitless
 	sudo cp gitless /usr/local/bin
 
 cscope:
