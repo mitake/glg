@@ -930,11 +930,12 @@ int main(void)
 			update_terminal();
 	}
 
-	printf("\n");
+	addch('\n');
 
 #ifdef GIT_LESS_DEBUG
 	unlink(DEBUG_FIFO_NAME);
 #endif
 
+	endwin();
 	return 0;
 }
