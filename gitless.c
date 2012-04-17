@@ -268,14 +268,14 @@ static void update_terminal(void)
 		} else {
 		normal_print:
 			for (j = 0; j < col && line[j] != '\n'; j++)
-				mcprint(&line[j], 1);
+				addch(line[j]);
 		}
 
-		mcprint(&nl, 1);
+		addch('\n');
 	}
 
 	while (i++ < current->head_line + row)
-		mcprint(&nl, 1);
+		addch('\n');
 
 #if 0
 	if (current->nr_lines <= current->head_line + row)
@@ -286,8 +286,9 @@ static void update_terminal(void)
 			/ current->nr_lines * 100.0);
 
 	printf("\033[7m %s\033[0m", bottom_message);
-#endif
 	fflush(stdout);
+#endif
+	refresh();
 }
 
 static void signal_handler(int signum)
