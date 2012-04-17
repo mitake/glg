@@ -9,7 +9,7 @@ CC = gcc
 default: gitless
 
 gitless: $(OBJS)
-	$(CC) -o gitless $(OBJS)
+	$(CC) -o gitless $(OBJS) -lncurses
 
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@

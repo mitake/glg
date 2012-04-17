@@ -34,6 +34,7 @@
 #include <assert.h>
 
 #include <regex.h>
+#include <ncurses.h>
 
 extern int errno;
 
@@ -163,11 +164,21 @@ static void init_tty(void)
 	if (tty_fd < 0)
 		die("open()ing /dev/tty");
 
+#if 0
 	bzero(&attr, sizeof(struct termios));
 	tcgetattr(tty_fd, &attr);
 	attr.c_lflag &= ~ICANON;
 	attr.c_lflag &= ~ECHO;
 	tcsetattr(tty_fd, TCSANOW, &attr);
+#endif
+
+	initscr();
+
+	cbreak();
+	noecho();
+	nonl();
+	intrflush(stdscr, FALSE);
+	keypad(stdscr, TRUE);
 
 	update_row_col();
 }
@@ -204,8 +215,10 @@ static void update_terminal(void)
 {
 	int i, j, print;
 	char *line;
+		char nl = '\n';
 
-	printf("\033[2J\033[0;0J");
+	/* printf("\033[2J\033[0;0J"); */
+	move(0, 0);
 
 	/* FIXME: first new line should be eliminated in git-log */
 	if (current != head && !current->head_line)
@@ -255,14 +268,16 @@ static void update_terminal(void)
 		} else {
 		normal_print:
 			for (j = 0; j < col && line[j] != '\n'; j++)
-				putchar(line[j]);
+				mcprint(&line[j], 1);
 		}
-		putchar('\n');
+
+		mcprint(&nl, 1);
 	}
 
 	while (i++ < current->head_line + row)
-		putchar('\n');
+		mcprint(&nl, 1);
 
+#if 0
 	if (current->nr_lines <= current->head_line + row)
 		printf("\033[7m100%%\033[0m");
 	else
@@ -271,6 +286,7 @@ static void update_terminal(void)
 			/ current->nr_lines * 100.0);
 
 	printf("\033[7m %s\033[0m", bottom_message);
+#endif
 	fflush(stdout);
 }
 
