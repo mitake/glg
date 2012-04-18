@@ -155,7 +155,7 @@ static void update_row_col(void)
 				match_array_size * sizeof(regmatch_t));
 	}
 
-	resizeterm(row, col);
+	resizeterm(size.ws_row, size.ws_col);
 }
 
 /* static struct termios attr; */
@@ -351,7 +351,7 @@ static void update_terminal(void)
 	fflush(stdout);
 #endif
 
-	addch('\n');
+	move(row, 0);
 	attron(A_REVERSE);
 
 	if (current->nr_lines <= current->head_line + row)
