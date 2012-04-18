@@ -154,9 +154,16 @@ static void update_row_col(void)
 		match_array = xrealloc(match_array,
 				match_array_size * sizeof(regmatch_t));
 	}
+
+	resizeterm(row, col);
 }
 
-static struct termios attr;
+/* static struct termios attr; */
+
+#define COLORING_PLUS   1
+#define COLORING_MINUS  2
+#define COLORING_ATMARK 3
+#define COLORING_COMMIT 4
 
 static void init_tty(void)
 {
@@ -179,6 +186,13 @@ static void init_tty(void)
 	nonl();
 	intrflush(stdscr, FALSE);
 	keypad(stdscr, TRUE);
+
+	start_color();
+
+	init_pair(COLORING_PLUS, COLOR_GREEN, COLOR_BLACK);
+	init_pair(COLORING_MINUS, COLOR_RED, COLOR_BLACK);
+	init_pair(COLORING_ATMARK, COLOR_CYAN, COLOR_BLACK);
+	init_pair(COLORING_COMMIT, COLOR_YELLOW, COLOR_BLACK);
 
 	update_row_col();
 }
@@ -211,11 +225,53 @@ static struct commit *current, *tail;
 
 static regex_t *re_compiled;
 
+/* addstr is used in ncurses */
+#define _addstr(fmt, arg...)				\
+	do {						\
+		int i;					\
+		char *buf = xalloc(col - 1);		\
+							\
+		snprintf(buf, col - 1, fmt,		\
+			##arg);				\
+		for (i = 0; i < col - 1 && buf[i]; i++)	\
+			addch(buf[i]);			\
+		free(buf);				\
+	} while (0)
+
+static void coloring(char ch, int on)
+{
+	int color = 0;
+
+	switch (ch) {
+	case '+':
+		color = COLOR_PAIR(COLORING_PLUS);
+		break;
+	case '-':
+		color = COLOR_PAIR(COLORING_MINUS);
+		break;
+	case '@':
+		color = COLOR_PAIR(COLORING_ATMARK);
+		break;
+	case 'c':
+		color = COLOR_PAIR(COLORING_COMMIT);
+		break;
+
+	default:
+		return;
+
+		break;
+	}
+
+	if (on)
+		attron(color);
+	else
+		attroff(color);
+}
+
 static void update_terminal(void)
 {
 	int i, j, print;
 	char *line;
-		char nl = '\n';
 
 	/* printf("\033[2J\033[0;0J"); */
 	move(0, 0);
@@ -227,7 +283,12 @@ static void update_terminal(void)
 	for (i = current->head_line, print = 0;
 	     i < current->head_line + row
 		     && i < current->nr_lines; i++, print++) {
+		char first_char;
+
 		line = &logbuf[current->lines[i]];
+		first_char = line[0];
+
+		coloring(first_char, 1);
 
 		if (state == STATE_SEARCHING_QUERY) {
 			int ret, mi, nli = ret_nl_index(line);
@@ -243,10 +304,10 @@ static void update_terminal(void)
 
 			for (mi = j = 0; j < col && line[j] != '\n'; j++) {
 				if (j == match_array[mi].rm_so) {
-					printf("\033[7m");
+					attron(A_REVERSE);
 					rev = 1;
 				} else if (j == match_array[mi].rm_eo) {
-					printf("\033[0m");
+					attroff(A_REVERSE);
 					rev = 0;
 
 					mi++;
@@ -254,7 +315,7 @@ static void update_terminal(void)
 
 				if (match_array[mi].rm_so
 					== match_array[mi].rm_eo) {
-					printf("\033[0m");
+					attroff(A_REVERSE);
 					rev = 0;
 
 					mi++;
@@ -264,14 +325,16 @@ static void update_terminal(void)
 			}
 
 			if (rev)
-				printf("\033[0m");
+				attroff(A_REVERSE);
 		} else {
 		normal_print:
 			for (j = 0; j < col && line[j] != '\n'; j++)
 				addch(line[j]);
+
 		}
 
 		addch('\n');
+		coloring(first_char, 0);
 	}
 
 	while (i++ < current->head_line + row)
@@ -288,6 +351,20 @@ static void update_terminal(void)
 	printf("\033[7m %s\033[0m", bottom_message);
 	fflush(stdout);
 #endif
+
+	attron(A_REVERSE);
+
+	if (current->nr_lines <= current->head_line + row)
+		_addstr("100%%");
+	else
+		_addstr("% .0f%%",
+			(float)(current->head_line + row)
+			/ current->nr_lines * 100.0);
+
+	_addstr(" %s", bottom_message);
+
+	attroff(A_REVERSE);
+
 	refresh();
 }
 
@@ -701,7 +778,7 @@ no_match:
 static int current_direction, current_global;
 
 #define update_query_bm()	do {					\
-		bmprintf("\033[7m%s %s search:\033[0m %s",		\
+		bmprintf("%s %s search: %s",				\
 			current_direction ? "forward" : "backward",	\
 			current_global ? "global" : "local",		\
 			query);						\
