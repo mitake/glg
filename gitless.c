@@ -184,8 +184,8 @@ static void init_tty(void)
 	cbreak();
 	noecho();
 	nonl();
-	intrflush(stdscr, FALSE);
-	keypad(stdscr, TRUE);
+	/* intrflush(stdscr, FALSE); */
+	/* keypad(stdscr, TRUE); */
 
 	start_color();
 
@@ -270,19 +270,18 @@ static void coloring(char ch, int on)
 
 static void update_terminal(void)
 {
-	int i, j, print;
+	int i, j;
 	char *line;
 
-	/* printf("\033[2J\033[0;0J"); */
 	move(0, 0);
+	clear();
 
-	/* FIXME: first new line should be eliminated in git-log */
+	/* eliminating first new line */
 	if (current != head && !current->head_line)
 		current->head_line = 1;
 
-	for (i = current->head_line, print = 0;
-	     i < current->head_line + row
-		     && i < current->nr_lines; i++, print++) {
+	for (i = current->head_line;
+	     i < current->head_line + row && i < current->nr_lines; i++) {
 		char first_char;
 
 		line = &logbuf[current->lines[i]];
@@ -352,16 +351,17 @@ static void update_terminal(void)
 	fflush(stdout);
 #endif
 
+	addch('\n');
 	attron(A_REVERSE);
 
 	if (current->nr_lines <= current->head_line + row)
-		_addstr("100%%");
+		printw("100%%");
 	else
-		_addstr("% .0f%%",
+		printw("% .0f%%",
 			(float)(current->head_line + row)
 			/ current->nr_lines * 100.0);
 
-	_addstr(" %s", bottom_message);
+	/* _addstr(" %s", bottom_message); */
 
 	attroff(A_REVERSE);
 
