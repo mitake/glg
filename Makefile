@@ -1,6 +1,6 @@
 
-OBJS = gitless.o vtparse.o vtparse_table.o
-HDRS = vtparse.h
+OBJS = gitless.o
+HDRS =
 
 CFLAGS = -O2 -Wall
 
