@@ -320,7 +320,7 @@ static void update_terminal(void)
 					mi++;
 				}
 
-				putchar(line[j]);
+				addch(line[j]);
 			}
 
 			if (rev)
@@ -361,7 +361,8 @@ static void update_terminal(void)
 			(float)(current->head_line + row)
 			/ current->nr_lines * 100.0);
 
-	/* _addstr(" %s", bottom_message); */
+	if (strlen(bottom_message))
+		printw(", %s", bottom_message);
 
 	attroff(A_REVERSE);
 
@@ -808,7 +809,7 @@ static int _search(int key, int direction, int global)
 			goto end;
 		}
 
-		if (key == '\n')
+		if (key == 0xd/* \n ?*/)
 			state = STATE_SEARCHING_QUERY;
 		else {
 			query[query_used++] = (char)key;
