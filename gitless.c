@@ -947,6 +947,17 @@ static struct key_cmd valid_ops[] = {
 
 static int (*ops_array[256])(char);
 
+static void exit_handler(void)
+{
+	addch('\n');
+
+#ifdef GIT_LESS_DEBUG
+	unlink(DEBUG_FIFO_NAME);
+#endif
+
+	endwin();
+}
+
 int main(void)
 {
 	int i;
@@ -966,6 +977,8 @@ int main(void)
 
 	bottom_message = xalloc(bottom_message_size);
 	match_array = xalloc(match_array_size * sizeof(regmatch_t));
+
+	atexit(exit_handler);
 
 	init_tty();
 	init_sighandler();
@@ -1007,12 +1020,5 @@ int main(void)
 			update_terminal();
 	}
 
-	addch('\n');
-
-#ifdef GIT_LESS_DEBUG
-	unlink(DEBUG_FIFO_NAME);
-#endif
-
-	endwin();
 	return 0;
 }
