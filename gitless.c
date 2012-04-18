@@ -786,6 +786,11 @@ static int current_direction, current_global;
 									\
 	} while (0)
 
+static struct {
+	struct commit *commit;
+	int head_line;
+} orig_place;
+
 static int _search(int key, int direction, int global)
 {
 	current_direction = direction;
@@ -809,9 +814,12 @@ static int _search(int key, int direction, int global)
 			goto end;
 		}
 
-		if (key == 0xd/* \n ?*/)
+		if (key == 0xd /* FIXME: \n ?*/) {
 			state = STATE_SEARCHING_QUERY;
-		else {
+
+			orig_place.commit = current;
+			orig_place.head_line = current->head_line;
+		} else {
 			query[query_used++] = (char)key;
 			update_query_bm();
 		}
@@ -907,6 +915,18 @@ static int input_query(char key)
 	return _search(key, current_direction, current_global);
 }
 
+static int restore_orig_place(char cmd)
+{
+	if (!orig_place.commit)
+		return 0;
+
+	current = orig_place.commit;
+	orig_place.commit = NULL;
+	current->head_line = orig_place.head_line;
+
+	return 1;
+}
+
 static int nop(char cmd)
 {
 	return 0;
@@ -942,6 +962,7 @@ static struct key_cmd valid_ops[] = {
 	{ '!', search_local_backward },
 	{ 'n', search_progress },
 	{ 'p', search_progress },
+	{ 'o', restore_orig_place },
 
 	{ '\0', NULL },
 };
