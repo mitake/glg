@@ -80,7 +80,7 @@ static int ret_nl_index(char *s)
 static int stdin_fd = 0, tty_fd, debug_fd;
 static unsigned int row, col;
 static int running = 1;
-static int searching;
+static int searching, visiting_root;
 
 #define LINES_INIT_SIZE 128
 
@@ -380,6 +380,8 @@ static void signal_handler(int signum)
 	case SIGINT:
 		if (searching)
 			searching = 0;
+		else if (visiting_root)
+			visiting_root = 0;
 		else
 			running = 0;
 		break;
@@ -531,12 +533,11 @@ static void read_commit(void)
 		rbyte = read(stdin_fd, &logbuf[logbuf_used],
 			logbuf_size - logbuf_used);
 
-		if (rbyte < 0) {
-			if (errno == EINTR)
-				continue;
-			else
-				die("read() failed");
-		}
+		if (errno == EINTR)
+			continue;
+
+		if (rbyte < 0)
+			die("read() failed");
 
 		if (!rbyte) {
 			read_end = 1;
@@ -648,21 +649,36 @@ static int backward_page(char cmd)
 
 static int show_root(char cmd)
 {
+	struct commit *p = current;
+
 	if (root) {
 		current = root;
 		return 1;
 	}
 
+	visiting_root = 1;
+
 	do {
 		if (!current->prev)
 			read_commit();
+
 		if (!current->prev)
 			break;
-		current = current->prev;
-	} while (1);
 
-	assert(!root);
-	root = current;
+		current = current->prev;
+	} while (visiting_root);
+
+	if (!visiting_root) {
+		current = p;
+		bmprintf("stop visiting root commit");
+	} else {
+		visiting_root = 0;
+
+		assert(!root);
+		root = current;
+	}
+
+	visiting_root = 0;
 
 	return 1;
 }
@@ -921,8 +937,19 @@ static int restore_orig_place(char cmd)
 		return 0;
 
 	current = orig_place.commit;
-	orig_place.commit = NULL;
 	current->head_line = orig_place.head_line;
+
+	bmprintf("restored  original place");
+
+	return 1;
+}
+
+static int save_orig_place(char cmd)
+{
+	orig_place.commit = current;
+	orig_place.head_line = current->head_line;
+
+	bmprintf("saved current as original place");
 
 	return 1;
 }
@@ -963,6 +990,7 @@ static struct key_cmd valid_ops[] = {
 	{ 'n', search_progress },
 	{ 'p', search_progress },
 	{ 'o', restore_orig_place },
+	{ 's', save_orig_place },
 
 	{ '\0', NULL },
 };
