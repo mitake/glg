@@ -2,6 +2,8 @@
 sample configuration (shell rc):
        alias git-lg="git log -p | gitless"
 
+gitless cannot be used with --color option of git-log
+
 todo:
-	handling colored output
-	sane terminals support
+	sane color handling
+	command for yanking commit ID
