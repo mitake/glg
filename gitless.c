@@ -533,8 +533,10 @@ static void read_commit(void)
 		rbyte = read(stdin_fd, &logbuf[logbuf_used],
 			logbuf_size - logbuf_used);
 
-		if (errno == EINTR)
+		if (errno == EINTR) {
+			errno = 0;
 			continue;
+		}
 
 		if (rbyte < 0)
 			die("read() failed");
