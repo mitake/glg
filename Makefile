@@ -23,4 +23,4 @@ cscope:
 
 clean:
 	rm -f *.o
-	rm cscope.*
+	rm -f cscope.*
