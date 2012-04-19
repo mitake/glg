@@ -918,9 +918,11 @@ static int input_query(char key)
 		return 1;
 	} else if (key == (char)0x1b) {
 		/* escape */
-		regfree(re_compiled);
-		free(re_compiled);
-		re_compiled = NULL;
+		if (re_compiled) {
+			regfree(re_compiled);
+			free(re_compiled);
+			re_compiled = NULL;
+		}
 
 		query_used = 0;
 		bzero(query, QUERY_SIZE);
