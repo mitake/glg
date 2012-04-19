@@ -77,7 +77,10 @@ static int ret_nl_index(char *s)
 	return i;
 }
 
-static int stdin_fd = 0, tty_fd, debug_fd;
+static int stdin_fd = 0, tty_fd;
+#ifdef GIT_LESS_DEBUG
+static int debug_fd;
+#endif
 static unsigned int row, col;
 static int running = 1;
 static int searching, visiting_root;
