@@ -579,6 +579,8 @@ static int show_prev_commit(char cmd)
 	}
 
 	current = current->prev;
+	current->head_line = 0;
+
 	return 1;
 }
 
@@ -590,6 +592,8 @@ static int show_next_commit(char cmd)
 	}
 
 	current = current->next;
+	current->head_line = 0;
+
 	return 1;
 }
 
