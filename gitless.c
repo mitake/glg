@@ -220,7 +220,7 @@ struct commit {
 	 */
 	struct commit *prev, *next;
 
-	char *commit_id;
+	char *commit_id, *summary;
 };
 
 /* head: HEAD, root: root of the commit tree */
@@ -366,13 +366,16 @@ static void update_terminal(void)
 			(float)(current->head_line + row)
 			/ current->nr_lines * 100.0);
 
-	printw(" (");
-	for (i = 0; i < 40; i++)
+	printw("   ");
+	for (i = 0; i < 8; i++)
 		printw("%c", current->commit_id[i]);
-	printw(")");
+	printw(", ");
+	printw("%s", current->summary);
+	if (80 < strlen(current->summary))
+		printw("...");
 
 	if (strlen(bottom_message))
-		printw(", %s", bottom_message);
+		printw(": %s", bottom_message);
 
 	attroff(A_REVERSE);
 
@@ -414,6 +417,16 @@ static int init_sighandler(void)
 	return 0;
 }
 
+static int contain_visible_char(char *buf)
+{
+	int i, len = strlen(buf);
+
+	for (i = 0; i < len; i++)
+		if (buf[i] != ' ') return i;
+
+	return -1;
+}
+
 static void init_commit(struct commit *c, int first_index, int last_index)
 {
 	int i, line_head;
@@ -445,7 +458,27 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 		}
 	}
 
+	for (i = 0; i < c->nr_lines; i++) {
+		int j, len, nli;
+		char *line;
+
+		line = &logbuf[c->lines[i]];
+
+		if ((j = contain_visible_char(line)) < 1)
+			continue;
+
+		nli = ret_nl_index(&line[j]);
+		line[j + nli] = '\0';
+		len = strlen(&line[j]);
+		c->summary = xalloc(len + 1);
+		strcpy(c->summary, &line[j]);
+		line[j + nli] = '\n';
+
+		break;
+	}
+
 	assert(c->commit_id);
+	assert(c->summary);
 }
 
 static int contain_etx(int begin, int end)
