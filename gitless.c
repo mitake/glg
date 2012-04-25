@@ -219,6 +219,8 @@ struct commit {
 	 * next means next commit of the commit object.
 	 */
 	struct commit *prev, *next;
+
+	char *commit_id;
 };
 
 /* head: HEAD, root: root of the commit tree */
@@ -364,6 +366,11 @@ static void update_terminal(void)
 			(float)(current->head_line + row)
 			/ current->nr_lines * 100.0);
 
+	printw(" (");
+	for (i = 0; i < 40; i++)
+		printw("%c", current->commit_id[i]);
+	printw(")");
+
 	if (strlen(bottom_message))
 		printw(", %s", bottom_message);
 
@@ -421,6 +428,14 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 			continue;
 
 		c->lines[c->nr_lines++] = line_head;
+
+		if (logbuf[line_head] == 'c') {
+			c->commit_id = xalloc(40);
+			memcpy(c->commit_id,
+				&logbuf[line_head + 7 /* strlen("commit ") */],
+				40);
+		}
+
 		line_head = i + 1;
 
 		if (c->lines_size == c->nr_lines) {
@@ -429,6 +444,8 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 					c->lines_size * sizeof(int));
 		}
 	}
+
+	assert(c->commit_id);
 }
 
 static int contain_etx(int begin, int end)
