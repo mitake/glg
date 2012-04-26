@@ -174,14 +174,6 @@ static void init_tty(void)
 	if (tty_fd < 0)
 		die("open()ing /dev/tty");
 
-#if 0
-	bzero(&attr, sizeof(struct termios));
-	tcgetattr(tty_fd, &attr);
-	attr.c_lflag &= ~ICANON;
-	attr.c_lflag &= ~ECHO;
-	tcsetattr(tty_fd, TCSANOW, &attr);
-#endif
-
 	initscr();
 
 	cbreak();
@@ -229,19 +221,6 @@ static struct commit *head, *root;
 static struct commit *current, *tail;
 
 static regex_t *re_compiled;
-
-/* addstr is used in ncurses */
-#define _addstr(fmt, arg...)				\
-	do {						\
-		int i;					\
-		char *buf = xalloc(col - 1);		\
-							\
-		snprintf(buf, col - 1, fmt,		\
-			##arg);				\
-		for (i = 0; i < col - 1 && buf[i]; i++)	\
-			addch(buf[i]);			\
-		free(buf);				\
-	} while (0)
 
 static void coloring(char ch, int on)
 {
@@ -344,18 +323,6 @@ static void update_terminal(void)
 	while (i++ < current->head_line + row)
 		addch('\n');
 
-#if 0
-	if (current->nr_lines <= current->head_line + row)
-		printf("\033[7m100%%\033[0m");
-	else
-		printf("\033[7m% .0f%%\033[0m",
-			(float)(current->head_line + row)
-			/ current->nr_lines * 100.0);
-
-	printf("\033[7m %s\033[0m", bottom_message);
-	fflush(stdout);
-#endif
-
 	move(row, 0);
 	attron(A_REVERSE);
 
@@ -370,7 +337,7 @@ static void update_terminal(void)
 	for (i = 0; i < 8; i++)
 		printw("%c", current->commit_id[i]);
 	printw(", ");
-	printw("%s", current->summary);
+	printw("\"%s\"", current->summary);
 	if (80 < strlen(current->summary))
 		printw("...");
 
