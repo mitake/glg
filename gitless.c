@@ -36,6 +36,9 @@
 #include <regex.h>
 #include <ncurses.h>
 
+#define GIT_LESS_DEBUG
+#define DEBUG_FILE_NAME "/tmp/git-less-debug"
+
 extern int errno;
 
 #define die(fmt, arg...)						\
@@ -110,25 +113,11 @@ static int match_array_size = MATCH_ARRAY_INIT_SIZE;
 
 #ifdef GIT_LESS_DEBUG
 
+static FILE* debug_file;
+
 #define debug_printf(fmt, arg...)					\
 	do {                                                            \
-		char dbg_msg[1024];					\
-		int w, wbyte, len;					\
-									\
-		bzero(dbg_msg, 1024);					\
-		len = snprintf(dbg_msg, 1024,				\
-			fmt, ##arg);					\
-									\
-		wbyte = 0;						\
-		while ((w = write(debug_fd, dbg_msg + wbyte,		\
-						len - wbyte))) {	\
-			if (wbyte < 0)					\
-				die("failed write() on debug_fd");	\
-									\
-			wbyte += w;					\
-			if (wbyte == len)				\
-				break;					\
-		}							\
+		fprintf(debug_file, fmt, ##arg);			\
 	} while (0)
 
 #else
@@ -704,8 +693,6 @@ static int show_root(char cmd)
 		root = current;
 	}
 
-	visiting_root = 0;
-
 	return 1;
 }
 
@@ -1030,7 +1017,7 @@ static void exit_handler(void)
 	addch('\n');
 
 #ifdef GIT_LESS_DEBUG
-	unlink(DEBUG_FIFO_NAME);
+	/* unlink(DEBUG_FILE_NAME); */
 #endif
 
 	endwin();
@@ -1043,13 +1030,14 @@ int main(void)
 
 #ifdef GIT_LESS_DEBUG
 
-#define DEBUG_FIFO_NAME "/tmp/git-less-debug"
-	if (mkfifo(DEBUG_FIFO_NAME, S_IRWXU))
-		die("failed to create named fifo for debugging");
-
-	debug_fd = open(DEBUG_FIFO_NAME, O_RDWR);
+	unlink(DEBUG_FILE_NAME);
+	debug_fd = open(DEBUG_FILE_NAME, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
 	if (debug_fd < 0)
-		die("failed to open() named fifo for debugging");
+		die("failed to open() file: %s for debugging", DEBUG_FILE_NAME);
+
+	debug_file = fdopen(debug_fd, "w");
+	if (!debug_file)
+		die("failed fdopen() for debug_file");
 
 #endif
 
