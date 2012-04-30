@@ -41,13 +41,7 @@
 
 extern int errno;
 
-#define die(fmt, arg...)						\
-	do {                                                            \
-		fprintf(stderr, "line %d: fatal error, " fmt "\n",	\
-			__LINE__, ##arg);				\
-		fprintf(stderr, "errno: %s\n", strerror(errno));	\
-		exit(1);						\
-	} while (0)
+#include "die.h"
 
 static void *xalloc(size_t size)
 {
@@ -1047,6 +1041,8 @@ int main(void)
 	atexit(exit_handler);
 
 	init_tty();
+	setsid();
+
 	init_sighandler();
 
 	logbuf_size = LOGBUF_INIT_SIZE;

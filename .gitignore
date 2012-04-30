@@ -1,3 +1,4 @@
 gitless
+gitless-invoker
 *.o
 cscope.*

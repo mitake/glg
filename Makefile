@@ -1,12 +1,12 @@
 
 OBJS = gitless.o
-HDRS =
+HDRS = die.h
 
 CFLAGS = -O2 -Wall
 
 CC = gcc
 
-default: gitless
+default: gitless gitless-invoker
 
 gitless: $(OBJS)
 	$(CC) -o gitless $(OBJS) -lncurses
@@ -14,8 +14,12 @@ gitless: $(OBJS)
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
-install: gitless
+gitless-invoker: gitless-invoker.o $(HDRS)
+	$(CC) -o gitless-invoker gitless-invoker.o
+
+install: gitless gitless-invoker
 	sudo cp gitless /usr/local/bin
+	sudo cp gitless-invoker /usr/local/bin
 
 cscope:
 	find . -name "*.[ch]" > cscope.files
