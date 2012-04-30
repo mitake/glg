@@ -489,15 +489,15 @@ static void read_head(void)
 		}
 
 		if (!rbyte) {
-			if (logbuf_used)
+			if (logbuf_used) {
+				last_etx = logbuf_used;
 				break;
-			else
+			} else
 				exit(0); /* no input */
 		}
 
 		prev_logbuf_used = logbuf_used;
 		logbuf_used += rbyte;
-
 	} while ((last_etx =
 			contain_etx(prev_logbuf_used, logbuf_used)) == -1);
 
