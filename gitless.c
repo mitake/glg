@@ -466,6 +466,8 @@ static int contain_etx(int begin, int end)
 	return -1;
 }
 
+static int read_end;
+
 static void read_head(void)
 {
 	int prev_logbuf_used = 0;
@@ -491,6 +493,8 @@ static void read_head(void)
 		if (!rbyte) {
 			if (logbuf_used) {
 				last_etx = logbuf_used;
+				read_end = 1;
+
 				break;
 			} else
 				exit(0); /* no input */
@@ -512,8 +516,6 @@ static void read_commit(void)
 	int prev_last_etx = last_etx;
 	int prev_logbuf_used, first_logbuf_used;
 	struct commit *new_commit;
-
-	static int read_end;
 
 	if (read_end)
 		return;
