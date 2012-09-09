@@ -93,8 +93,7 @@ static int searching, visiting_root;
 enum {
 	STATE_DEFAULT,
 	STATE_INPUT_SEARCH_QUERY,
-	STATE_SEARCHING_QUERY,
-	STATE_RANGE_SPECIFYING
+	STATE_SEARCHING_QUERY
 };
 static int state = STATE_DEFAULT;
 
