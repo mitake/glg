@@ -93,7 +93,8 @@ static int searching, visiting_root;
 enum {
 	STATE_DEFAULT,
 	STATE_INPUT_SEARCH_QUERY,
-	STATE_SEARCHING_QUERY
+	STATE_SEARCHING_QUERY,
+	STATE_RANGE_SPECIFYING
 };
 static int state = STATE_DEFAULT;
 
@@ -208,6 +209,7 @@ struct commit {
 static struct commit *head, *root;
 /* current: current displaying commit, tail: tail of the read commits */
 static struct commit *current, *tail;
+static struct commit *range_begin, *range_end;
 
 static regex_t *re_compiled;
 
@@ -579,6 +581,11 @@ skip_read:
 
 static int show_prev_commit(char cmd)
 {
+	if (current == range_begin) {
+		bmprintf("begin of range...");
+		return 0;
+	}
+
 	if (!current->prev) {
 		read_commit();
 
@@ -594,6 +601,11 @@ static int show_prev_commit(char cmd)
 
 static int show_next_commit(char cmd)
 {
+	if (current == range_end) {
+		bmprintf("end of range...");
+		return 1;
+	}
+
 	if (!current->next) {
 		assert(current == head);
 		return 0;
@@ -768,6 +780,9 @@ static int do_search(int direction, int global, int prog)
 	if (result || !global)
 		goto no_match;
 
+	if (current == range_begin || current == range_end)
+		goto no_match;
+
 	if (direction) {
 		if (!current->prev)
 			read_commit();
@@ -792,6 +807,9 @@ static int do_search(int direction, int global, int prog)
 		result = match_commit(p, direction, prog);
 		if (result)
 			goto matched;
+
+		if (p == range_begin || p == range_end)
+			goto no_match;
 
 		if (direction && !p->prev)
 			read_commit();
@@ -982,6 +1000,111 @@ static int quit(char cmd)
 	return 0;
 }
 
+enum {
+	RANGE_INIT,
+	RANGE_BEGIN_SPECIFIED,
+	RANGE_END_SPECIFIED,
+	RANGE_SPECIFIED
+};
+static int range_state = RANGE_INIT;
+
+static int specify_range(char cmd)
+{
+	int begin_set, end_set;
+
+	begin_set = end_set = 0;
+
+	switch (range_state) {
+	case RANGE_INIT:
+		if (cmd == '[') {
+			range_begin = current;
+			range_state = RANGE_BEGIN_SPECIFIED;
+
+			begin_set = 1;
+		} else {
+			assert(cmd == ']');
+
+			range_end = current;
+			range_state = RANGE_BEGIN_SPECIFIED;
+
+			end_set = 1;
+		}
+
+		break;
+	case RANGE_BEGIN_SPECIFIED:
+		if (cmd == '[') {
+			range_begin = current;
+			range_state = RANGE_BEGIN_SPECIFIED;
+
+			begin_set = 1;
+		} else {
+			assert(cmd == ']');
+
+			range_end = current;
+			range_state = RANGE_SPECIFIED;
+
+			end_set = 1;
+		}
+
+		break;
+	case RANGE_END_SPECIFIED:
+		if (cmd == '[') {
+			range_begin = current;
+			range_state = RANGE_SPECIFIED;
+
+			begin_set = 1;
+		} else {
+			assert(cmd == ']');
+
+			range_end = current;
+			range_state = RANGE_END_SPECIFIED;
+
+			end_set = 1;
+		}
+
+		break;
+	case RANGE_SPECIFIED:
+		if (cmd == '[') {
+			range_begin = current;
+			begin_set = 1;
+		} else {
+			assert(cmd == ']');
+			range_end = current;
+			end_set = 1;
+		}
+
+		break;
+	default:
+		fprintf(stderr, "invalid state: %d\n", range_state);
+		exit(1);
+		break;
+	}
+
+	if (range_state == RANGE_SPECIFIED) {
+		bmprintf("range specified");
+		return 1;
+	}
+
+	if (begin_set)
+		bmprintf("begin of range specified");
+	else if (end_set)
+		bmprintf("end of range specified");
+	else
+		return 0;
+
+	return 1;
+}
+
+static int clear_range(char cmd)
+{
+	range_begin = range_end = NULL;
+	range_state = RANGE_INIT;
+
+	bmprintf("range cleared");
+
+	return 1;
+}
+
 struct key_cmd {
 	char key;
 	int (*op)(char);
@@ -1008,6 +1131,10 @@ static struct key_cmd valid_ops[] = {
 	{ 'p', search_progress },
 	{ 'o', restore_orig_place },
 	{ 's', save_orig_place },
+
+	{ '[', specify_range },
+	{ ']', specify_range },
+	{ 'R', clear_range },
 
 	{ '\0', NULL },
 };
