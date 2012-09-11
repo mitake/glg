@@ -15,7 +15,7 @@ gitless: $(OBJS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
 install: gitless
-	sudo cp gitless /usr/local/bin
+	sudo cp gitless glg /usr/local/bin
 
 cscope:
 	find . -name "*.[ch]" > cscope.files
