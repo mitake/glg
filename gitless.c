@@ -779,10 +779,10 @@ static int do_search(int direction, int global, int prog)
 	if (result || !global)
 		goto no_match;
 
-	if (current == range_begin || current == range_end)
-		goto no_match;
-
 	if (direction) {
+		if (current == range_begin)
+			goto no_match;
+
 		if (!current->prev)
 			read_commit();
 
@@ -791,6 +791,9 @@ static int do_search(int direction, int global, int prog)
 		else
 			goto no_match;
 	} else {
+		if (current == range_end)
+			goto no_match;
+
 		if (current->next)
 			p = current->next;
 		else
