@@ -90,7 +90,7 @@ static unsigned int row, col;
 static int running = 1;
 static int searching, visiting_root;
 
-static char prev_cmd;
+static char prev_cmd;		/* BIG FIXME: fatally ugly... */
 
 #define LINES_INIT_SIZE 128
 
