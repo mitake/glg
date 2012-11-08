@@ -36,6 +36,8 @@
 #include <regex.h>
 #include <ncurses.h>
 
+#include <stdbool.h>
+
 #define GIT_LESS_DEBUG
 #define DEBUG_FILE_NAME "/tmp/git-less-debug"
 
@@ -93,7 +95,8 @@ static int searching, visiting_root;
 enum {
 	STATE_DEFAULT,
 	STATE_INPUT_SEARCH_QUERY,
-	STATE_SEARCHING_QUERY
+	STATE_SEARCHING_QUERY,
+	STATE_INPUT_SEARCH_TYPE,
 };
 static int state = STATE_DEFAULT;
 
@@ -722,8 +725,34 @@ static int show_head(char cmd)
 static char query[QUERY_SIZE + 1];
 static int query_used;
 
+static bool (*match_filter)(char *);
+
+static bool match_filter_modified(char *line)
+{
+	return line[0] == '+' || line[0] == '-';
+}
+
+static bool match_filter_at(char *line)
+{
+	return line[0] == '@';
+}
+
+static bool match_filter_commit_message(char *line)
+{
+	/* TODO */
+	return true;
+}
+
+static bool match_filter_default(char *line)
+{
+	return true;
+}
+
 static int match_line(char *line)
 {
+	if (!match_filter(line))
+		return 0;
+
 	if (!regexec(re_compiled, line, 0, NULL, REG_NOTEOL))
 		return 1;
 
@@ -853,8 +882,11 @@ static int _search(int key, int direction, int global)
 		query_used = 0;
 		bzero(query, QUERY_SIZE);
 
-		update_query_bm();
-		state = STATE_INPUT_SEARCH_QUERY;
+		bmprintf("%s %s search: input type (/, m, a, l): ",
+			current_direction ? "forward" : "backward",
+			current_global ? "global" : "local");
+
+		state = STATE_INPUT_SEARCH_TYPE;
 		break;
 
 	case STATE_INPUT_SEARCH_QUERY:
@@ -1141,7 +1173,61 @@ static struct key_cmd valid_ops[] = {
 	{ '\0', NULL },
 };
 
+static int search_type_modified_line(char cmd)
+{
+	match_filter = match_filter_modified;
+	state = STATE_INPUT_SEARCH_QUERY;
+	return 1;
+}
+
+static int search_type_at_line(char cmd)
+{
+	match_filter = match_filter_at;
+	state = STATE_INPUT_SEARCH_QUERY;
+	return 1;
+}
+
+static int search_type_commit_message(char cmd)
+{
+	match_filter = match_filter_commit_message;
+	state = STATE_INPUT_SEARCH_QUERY;
+	return 1;
+}
+
+static int search_type_default(char cmd)
+{
+	match_filter = match_filter_default;
+	state = STATE_INPUT_SEARCH_QUERY;
+	return 1;
+}
+
+static int search_type_cancel(char cmd)
+{
+	match_filter = match_filter_default;
+	state = STATE_DEFAULT;
+	return 1;
+}
+
+static int search_type_invalid(char cmd)
+{
+	bmprintf("invalid search type: %c\n", cmd);
+	state = STATE_DEFAULT;
+	return 1;
+}
+
+static struct key_cmd search_type_ops[] = {
+	{ 'm', search_type_modified_line },
+	{ 'a', search_type_at_line },
+	{ 'l', search_type_commit_message },
+	{ '/', search_type_default },
+
+	{ 0x1b, search_type_cancel },
+
+	{ '\0', NULL },
+};
+
 static int (*ops_array[256])(char);
+static int (*search_type_ops_array[256])(char);
 
 static void exit_handler(void)
 {
@@ -1185,6 +1271,8 @@ int main(void)
 	logbuf_used = 0;
 	read_head();
 
+	match_filter = match_filter_default;
+
 	update_terminal();
 
 	for (i = 0; i < 256; i++)
@@ -1192,6 +1280,13 @@ int main(void)
 
 	for (i = 0; valid_ops[i].key != '\0'; i++)
 		ops_array[(int)valid_ops[i].key] = valid_ops[i].op;
+
+	for (i = 0; i < 256; i++)
+		search_type_ops_array[i] = search_type_invalid;
+
+	for (i = 0; search_type_ops[i].key != '\0'; i++)
+		search_type_ops_array[(int)search_type_ops[i].key]
+			= search_type_ops[i].op;
 
 	while (running) {
 		int ret;
@@ -1208,10 +1303,24 @@ int main(void)
 		if (ret != 1)
 			die("reading key input failed");
 
-		if (state == STATE_INPUT_SEARCH_QUERY)
+		switch (state) {
+		case STATE_INPUT_SEARCH_TYPE:
+			ret = search_type_ops_array[(int)cmd](cmd);
+			break;
+
+		case STATE_INPUT_SEARCH_QUERY:
 			ret = input_query(cmd);
-		else
+			break;
+
+		case STATE_SEARCHING_QUERY:
+		case STATE_DEFAULT:
 			ret = ops_array[(int)cmd](cmd);
+			break;
+
+		default:
+			die("invalid state: %d\n", state);
+			break;
+		}
 
 		if (ret)
 			update_terminal();
