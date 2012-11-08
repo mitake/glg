@@ -90,6 +90,8 @@ static unsigned int row, col;
 static int running = 1;
 static int searching, visiting_root;
 
+static char prev_cmd;
+
 #define LINES_INIT_SIZE 128
 
 enum {
@@ -1196,6 +1198,12 @@ static int search_type_commit_message(char cmd)
 
 static int search_type_default(char cmd)
 {
+	if (prev_cmd != cmd) {
+		bmprintf("invalid search type: %c\n", cmd);
+		state = STATE_DEFAULT;
+		return 1;
+	}
+
 	match_filter = match_filter_default;
 	state = STATE_INPUT_SEARCH_QUERY;
 	return 1;
@@ -1220,6 +1228,9 @@ static struct key_cmd search_type_ops[] = {
 	{ 'a', search_type_at_line },
 	{ 'l', search_type_commit_message },
 	{ '/', search_type_default },
+	{ '\\', search_type_default },
+	{ '?', search_type_default },
+	{ '!', search_type_default },
 
 	{ 0x1b, search_type_cancel },
 
@@ -1324,6 +1335,8 @@ int main(void)
 
 		if (ret)
 			update_terminal();
+
+		prev_cmd = cmd;
 	}
 
 	return 0;
