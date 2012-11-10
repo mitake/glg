@@ -729,6 +729,39 @@ static int query_used;
 
 static bool (*match_filter)(char *);
 
+enum match_type {
+	MATCH_TYPE_DEFAULT,
+	MATCH_TYPE_MODIFIED,
+	MATCH_TYPE_AT,
+	MATCH_TYPE_COMMIT_MESSAGE,
+};
+
+static enum match_type current_match_type = MATCH_TYPE_DEFAULT;
+static char *current_match_type_str(void)
+{
+	char *ret;
+
+	switch (current_match_type) {
+	case MATCH_TYPE_DEFAULT:
+		ret = "default";
+		break;
+	case MATCH_TYPE_MODIFIED:
+		ret = "modified";
+		break;
+	case MATCH_TYPE_AT:
+		ret = "at";
+		break;
+	case MATCH_TYPE_COMMIT_MESSAGE:
+		ret = "commit";
+		break;
+	default:
+		die("invalid match type: %d\n", current_match_type);
+		break;
+	};
+
+	return ret;
+}
+
 static bool match_filter_modified(char *line)
 {
 	return line[0] == '+' || line[0] == '-';
@@ -861,9 +894,10 @@ no_match:
 static int current_direction, current_global;
 
 #define update_query_bm()	do {					\
-		bmprintf("%s %s search: %s",				\
+		bmprintf("%s %s search (type: %s): %s",			\
 			current_direction ? "forward" : "backward",	\
 			current_global ? "global" : "local",		\
+			current_match_type_str(),			\
 			query);						\
 									\
 	} while (0)
@@ -1179,6 +1213,9 @@ static int search_type_modified_line(char cmd)
 {
 	match_filter = match_filter_modified;
 	state = STATE_INPUT_SEARCH_QUERY;
+	current_match_type = MATCH_TYPE_MODIFIED;
+	update_query_bm();
+
 	return 1;
 }
 
@@ -1186,6 +1223,9 @@ static int search_type_at_line(char cmd)
 {
 	match_filter = match_filter_at;
 	state = STATE_INPUT_SEARCH_QUERY;
+	current_match_type = MATCH_TYPE_AT;
+	update_query_bm();
+
 	return 1;
 }
 
@@ -1193,6 +1233,9 @@ static int search_type_commit_message(char cmd)
 {
 	match_filter = match_filter_commit_message;
 	state = STATE_INPUT_SEARCH_QUERY;
+	current_match_type = MATCH_TYPE_COMMIT_MESSAGE;
+	update_query_bm();
+
 	return 1;
 }
 
@@ -1206,6 +1249,9 @@ static int search_type_default(char cmd)
 
 	match_filter = match_filter_default;
 	state = STATE_INPUT_SEARCH_QUERY;
+	current_match_type = MATCH_TYPE_DEFAULT;
+	update_query_bm();
+
 	return 1;
 }
 
