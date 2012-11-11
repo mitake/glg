@@ -99,6 +99,7 @@ enum {
 	STATE_INPUT_SEARCH_QUERY,
 	STATE_SEARCHING_QUERY,
 	STATE_INPUT_SEARCH_TYPE,
+	STATE_HELP,
 };
 static int state = STATE_DEFAULT;
 
@@ -247,7 +248,7 @@ static void coloring(char ch, int on)
 		attroff(color);
 }
 
-static void update_terminal(void)
+static void update_terminal_default(void)
 {
 	int i, j;
 	char *line;
@@ -342,6 +343,57 @@ static void update_terminal(void)
 	attroff(A_REVERSE);
 
 	refresh();
+}
+
+struct help_str {
+	char cmd;
+	char *desc;
+};
+
+struct help_str help_str_array[] = {
+#define cmd(cmd, func, desc) { cmd, desc },
+#include "default_cmd.def"
+#undef cmd
+	{ '\0', NULL }
+};
+
+static void update_terminal_help(void)
+{
+	int i;
+
+	move(0, 0);
+
+	printw("keystorkes supported in default state\n\n");
+	for (i = 0; help_str_array[i].cmd != '\0' ; i++) {
+		printw("%c: %s\n", help_str_array[i].cmd,
+			help_str_array[i].desc);
+	}
+
+	while (i++ < row)
+		addch('\n');
+
+	refresh();
+}
+
+
+static void update_terminal(void)
+{
+	switch (state) {
+	case STATE_DEFAULT:
+	case STATE_INPUT_SEARCH_QUERY:
+	case STATE_SEARCHING_QUERY:
+	case STATE_INPUT_SEARCH_TYPE:
+		update_terminal_default();
+		break;
+
+	case STATE_HELP:
+		update_terminal_help();
+		break;
+
+	default:
+		die("unknown state: %d\n", state);
+		break;
+	};
 }
 
 static void signal_handler(int signum)
@@ -1175,37 +1227,21 @@ static int clear_range(char cmd)
 	return 1;
 }
 
+static int help(char cmd)
+{
+	state = STATE_HELP;
+	return 1;
+}
+
 struct key_cmd {
 	char key;
 	int (*op)(char);
 };
 
 static struct key_cmd valid_ops[] = {
-	{ 'h', show_prev_commit },
-	{ 'j', forward_line },
-	{ 'k', backward_line },
-	{ 'l', show_next_commit },
-	{ 'q', quit },
-	{ 'g', goto_top },
-	{ 'G', goto_bottom },
-	{ ' ', forward_page },
-	{ 'J', forward_page },
-	{ 'K', backward_page },
-	{ 'H', show_root },
-	{ 'L', show_head },
-	{ '/', search_global_forward },
-	{ '?', search_global_backward },
-	{ '\\', search_local_forward },
-	{ '!', search_local_backward },
-	{ 'n', search_progress },
-	{ 'p', search_progress },
-	{ 'o', restore_orig_place },
-	{ 's', save_orig_place },
-
-	{ '[', specify_range },
-	{ ']', specify_range },
-	{ 'R', clear_range },
-
+#define cmd(cmd, func, desc) { cmd, func },
+#include "default_cmd.def"
+#undef cmd
 	{ '\0', NULL },
 };
 
@@ -1374,6 +1410,14 @@ int main(void)
 			ret = ops_array[(int)cmd](cmd);
 			break;
 
+		case STATE_HELP:
+			if (cmd == 'q') {
+				state = STATE_DEFAULT;
+				ret = 1;
+			} else
+				ret = 0;
+
+			break;
 		default:
 			die("invalid state: %d\n", state);
 			break;

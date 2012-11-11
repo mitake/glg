@@ -8,7 +8,7 @@ CC = gcc
 
 default: gitless
 
-gitless: $(OBJS)
+gitless: $(OBJS) default_cmd.def
 	$(CC) -o gitless $(OBJS) -lncurses
 
 %.o: %.c $(HDRS)
