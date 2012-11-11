@@ -2,7 +2,7 @@
 OBJS = gitless.o
 HDRS =
 
-CFLAGS = -O2 -Wall
+CFLAGS = -O2 -Wall -std=gnu99
 
 CC = gcc
 
