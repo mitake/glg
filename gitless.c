@@ -738,6 +738,11 @@ static int show_root(char cmd)
 {
 	struct commit *p = current;
 
+	if (range_begin) {
+		current = range_begin;
+		return 1;
+	}
+
 	if (root) {
 		current = root;
 		return 1;
@@ -773,7 +778,11 @@ static int show_head(char cmd)
 	if (current == head)
 		return 0;
 
-	current = head;
+	if (range_end)
+		current = range_end;
+	else
+		current = head;
+
 	return 1;
 }
 
