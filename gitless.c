@@ -1279,7 +1279,10 @@ static int search_filter_at_line(char cmd)
 	match_filter = match_filter_at;
 	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_AT;
-	update_query_bm();
+
+	bmprintf("type: %s, input search direction (/, ?, \\, !):",
+		current_match_type_str());
+
 
 	return 1;
 }
@@ -1289,7 +1292,9 @@ static int search_filter_commit_message(char cmd)
 	match_filter = match_filter_commit_message;
 	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_COMMIT_MESSAGE;
-	update_query_bm();
+
+	bmprintf("type: %s(not implemented yet!), input search direction (/, ?, \\, !):",
+		current_match_type_str());
 
 	return 1;
 }
