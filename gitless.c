@@ -98,7 +98,8 @@ enum {
 	STATE_DEFAULT,
 	STATE_INPUT_SEARCH_QUERY,
 	STATE_SEARCHING_QUERY,
-	STATE_INPUT_SEARCH_TYPE,
+	STATE_INPUT_SEARCH_FILTER,
+	STATE_INPUT_SEARCH_DIRECTION,
 	STATE_HELP,
 };
 static int state = STATE_DEFAULT;
@@ -382,7 +383,8 @@ static void update_terminal(void)
 	case STATE_DEFAULT:
 	case STATE_INPUT_SEARCH_QUERY:
 	case STATE_SEARCHING_QUERY:
-	case STATE_INPUT_SEARCH_TYPE:
+	case STATE_INPUT_SEARCH_FILTER:
+	case STATE_INPUT_SEARCH_DIRECTION:
 		update_terminal_default();
 		break;
 
@@ -967,14 +969,20 @@ static int _search(int key, int direction, int global)
 	switch (state) {
 	case STATE_DEFAULT:
 	case STATE_SEARCHING_QUERY:
+		current_match_type = MATCH_TYPE_DEFAULT;
+		match_filter = match_filter_default;
+
+	case STATE_INPUT_SEARCH_DIRECTION:
 		query_used = 0;
 		bzero(query, QUERY_SIZE);
 
-		bmprintf("%s %s search: input type (/, m, a, l): ",
+		bmprintf("%s %s search (type: %s): ",
 			current_direction ? "forward" : "backward",
-			current_global ? "global" : "local");
+			current_global ? "global" : "local",
+			current_match_type_str());
 
-		state = STATE_INPUT_SEARCH_TYPE;
+		state = STATE_INPUT_SEARCH_QUERY;
+
 		break;
 
 	case STATE_INPUT_SEARCH_QUERY:
@@ -1227,6 +1235,14 @@ static int clear_range(char cmd)
 	return 1;
 }
 
+static int search_with_filter(char cmd)
+{
+	bmprintf("input search filter(m(modified), a(at line), l(NIY): ");
+	state = STATE_INPUT_SEARCH_FILTER;
+
+	return 1;
+}
+
 static int help(char cmd)
 {
 	state = STATE_HELP;
@@ -1245,82 +1261,98 @@ static struct key_cmd valid_ops[] = {
 	{ '\0', NULL },
 };
 
-static int search_type_modified_line(char cmd)
+static int search_filter_modified_line(char cmd)
 {
 	match_filter = match_filter_modified;
-	state = STATE_INPUT_SEARCH_QUERY;
+	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_MODIFIED;
-	update_query_bm();
+
+	bmprintf("type: %s, input search direction (/, ?, \\, !):",
+		current_match_type_str());
+
 
 	return 1;
 }
 
-static int search_type_at_line(char cmd)
+static int search_filter_at_line(char cmd)
 {
 	match_filter = match_filter_at;
-	state = STATE_INPUT_SEARCH_QUERY;
+	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_AT;
 	update_query_bm();
 
 	return 1;
 }
 
-static int search_type_commit_message(char cmd)
+static int search_filter_commit_message(char cmd)
 {
 	match_filter = match_filter_commit_message;
-	state = STATE_INPUT_SEARCH_QUERY;
+	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_COMMIT_MESSAGE;
 	update_query_bm();
 
 	return 1;
 }
 
-static int search_type_default(char cmd)
+static int search_filter_cancel(char cmd)
 {
-	if (prev_cmd != cmd) {
-		bmprintf("invalid search type: %c\n", cmd);
-		state = STATE_DEFAULT;
-		return 1;
-	}
-
 	match_filter = match_filter_default;
-	state = STATE_INPUT_SEARCH_QUERY;
 	current_match_type = MATCH_TYPE_DEFAULT;
-	update_query_bm();
-
-	return 1;
-}
-
-static int search_type_cancel(char cmd)
-{
-	match_filter = match_filter_default;
 	state = STATE_DEFAULT;
+
 	return 1;
 }
 
-static int search_type_invalid(char cmd)
+static int search_filter_invalid(char cmd)
 {
 	bmprintf("invalid search type: %c\n", cmd);
+	match_filter = match_filter_default;
+	current_match_type = MATCH_TYPE_DEFAULT;
+	state = STATE_DEFAULT;
+
+	return 1;
+}
+
+static struct key_cmd search_filter_ops[] = {
+	{ 'm', search_filter_modified_line },
+	{ 'a', search_filter_at_line },
+	{ 'l', search_filter_commit_message },
+
+	{ 0x1b, search_filter_cancel },
+
+	{ '\0', NULL },
+};
+
+static int search_direction_cancel(char cmd)
+{
+	match_filter = match_filter_default;
+	current_match_type = MATCH_TYPE_DEFAULT;
+	state = STATE_DEFAULT;
+
+	return 1;
+}
+
+static int search_direction_invalid(char cmd)
+{
+	bmprintf("invalid direction specifier: %c\n", cmd);
 	state = STATE_DEFAULT;
 	return 1;
 }
 
-static struct key_cmd search_type_ops[] = {
-	{ 'm', search_type_modified_line },
-	{ 'a', search_type_at_line },
-	{ 'l', search_type_commit_message },
-	{ '/', search_type_default },
-	{ '\\', search_type_default },
-	{ '?', search_type_default },
-	{ '!', search_type_default },
+static struct key_cmd search_direction_ops[] = {
+	{ '/', search_global_forward },
+	{ '?', search_global_backward },
+	{ '\\', search_local_forward },
+	{ '!', search_local_backward },
 
-	{ 0x1b, search_type_cancel },
+	{ 0x1b, search_direction_cancel },
 
 	{ '\0', NULL },
 };
 
 static int (*ops_array[256])(char);
-static int (*search_type_ops_array[256])(char);
+static int (*search_filter_ops_array[256])(char);
+static int (*search_direction_ops_array[256])(char);
 
 static void exit_handler(void)
 {
@@ -1375,11 +1407,18 @@ int main(void)
 		ops_array[(int)valid_ops[i].key] = valid_ops[i].op;
 
 	for (i = 0; i < 256; i++)
-		search_type_ops_array[i] = search_type_invalid;
+		search_filter_ops_array[i] = search_filter_invalid;
 
-	for (i = 0; search_type_ops[i].key != '\0'; i++)
-		search_type_ops_array[(int)search_type_ops[i].key]
-			= search_type_ops[i].op;
+	for (i = 0; search_filter_ops[i].key != '\0'; i++)
+		search_filter_ops_array[(int)search_filter_ops[i].key]
+			= search_filter_ops[i].op;
+
+	for (i = 0; i < 256; i++)
+		search_direction_ops_array[i] = search_direction_invalid;
+
+	for (i = 0; search_direction_ops[i].key != '\0'; i++)
+		search_direction_ops_array[(int)search_direction_ops[i].key]
+			= search_direction_ops[i].op;
 
 	while (running) {
 		int ret;
@@ -1397,8 +1436,8 @@ int main(void)
 			die("reading key input failed");
 
 		switch (state) {
-		case STATE_INPUT_SEARCH_TYPE:
-			ret = search_type_ops_array[(int)cmd](cmd);
+		case STATE_INPUT_SEARCH_FILTER:
+			ret = search_filter_ops_array[(int)cmd](cmd);
 			break;
 
 		case STATE_INPUT_SEARCH_QUERY:
@@ -1408,6 +1447,10 @@ int main(void)
 		case STATE_SEARCHING_QUERY:
 		case STATE_DEFAULT:
 			ret = ops_array[(int)cmd](cmd);
+			break;
+
+		case STATE_INPUT_SEARCH_DIRECTION:
+			ret = search_direction_ops_array[(int)cmd](cmd);
 			break;
 
 		case STATE_HELP:
