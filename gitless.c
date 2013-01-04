@@ -797,6 +797,7 @@ enum match_type {
 	MATCH_TYPE_MODIFIED,
 	MATCH_TYPE_AT,
 	MATCH_TYPE_COMMIT_MESSAGE,
+	MATCH_TYPE_FILE,
 };
 
 static enum match_type current_match_type = MATCH_TYPE_DEFAULT;
@@ -817,6 +818,9 @@ static char *current_match_type_str(void)
 	case MATCH_TYPE_COMMIT_MESSAGE:
 		ret = "commit";
 		break;
+	case MATCH_TYPE_FILE:
+		ret = "file";
+		break;
 	default:
 		die("invalid match type: %d\n", current_match_type);
 		break;
@@ -833,6 +837,15 @@ static bool match_filter_modified(char *line)
 static bool match_filter_at(char *line)
 {
 	return line[0] == '@';
+}
+
+static bool match_filter_file(char *line)
+{
+	/* lines begin with "+++" or "---" */
+	if (strlen(line) < 3)
+		return false;
+
+	return !strncmp(line, "+++", 3) || !strncmp(line, "---", 3);
 }
 
 static bool match_filter_commit_message(char *line)
@@ -1246,7 +1259,7 @@ static int clear_range(char cmd)
 
 static int search_with_filter(char cmd)
 {
-	bmprintf("input search filter(m(modified), a(at line), l(NIY): ");
+	bmprintf("input search filter(m(modified), a(at line), f(+++, ---): ");
 	state = STATE_INPUT_SEARCH_FILTER;
 
 	return 1;
@@ -1279,7 +1292,6 @@ static int search_filter_modified_line(char cmd)
 	bmprintf("type: %s, input search direction (/, ?, \\, !):",
 		current_match_type_str());
 
-
 	return 1;
 }
 
@@ -1292,7 +1304,6 @@ static int search_filter_at_line(char cmd)
 	bmprintf("type: %s, input search direction (/, ?, \\, !):",
 		current_match_type_str());
 
-
 	return 1;
 }
 
@@ -1303,6 +1314,18 @@ static int search_filter_commit_message(char cmd)
 	current_match_type = MATCH_TYPE_COMMIT_MESSAGE;
 
 	bmprintf("type: %s(not implemented yet!), input search direction (/, ?, \\, !):",
+		current_match_type_str());
+
+	return 1;
+}
+
+static int search_filter_file_line(char cmd)
+{
+	match_filter = match_filter_file;
+	state = STATE_INPUT_SEARCH_DIRECTION;
+	current_match_type = MATCH_TYPE_FILE;
+
+	bmprintf("type: %s, input search direction (/, ?, \\, !):",
 		current_match_type_str());
 
 	return 1;
@@ -1331,6 +1354,7 @@ static struct key_cmd search_filter_ops[] = {
 	{ 'm', search_filter_modified_line },
 	{ 'a', search_filter_at_line },
 	{ 'l', search_filter_commit_message },
+	{ 'f', search_filter_file_line },
 
 	{ 0x1b, search_filter_cancel },
 
