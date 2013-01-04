@@ -43,11 +43,17 @@
 
 extern int errno;
 
+static int running = 1;
+
+static char dying_msg[1024];
 #define die(fmt, arg...)						\
-	do {                                                            \
-		fprintf(stderr, "line %d: fatal error, " fmt "\n",	\
-			__LINE__, ##arg);				\
-		fprintf(stderr, "errno: %s\n", strerror(errno));	\
+	do {								\
+		int ret;						\
+		ret = sprintf(dying_msg,				\
+				"line %d: fatal error, " fmt "\n",	\
+				__LINE__, ##arg);			\
+		sprintf(dying_msg + ret, "errno: %s\n",			\
+			strerror(errno));				\
 		exit(1);						\
 	} while (0)
 
@@ -87,7 +93,6 @@ static int stdin_fd = 0, tty_fd;
 static int debug_fd;
 #endif
 static unsigned int row, col;
-static int running = 1;
 static int searching, visiting_root;
 
 static char prev_cmd;		/* BIG FIXME: fatally ugly... */
@@ -1401,6 +1406,8 @@ static void exit_handler(void)
 #endif
 
 	endwin();
+
+	fprintf(stderr, dying_msg);
 }
 
 int main(void)
