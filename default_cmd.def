@@ -21,6 +21,7 @@ cmd('s', save_orig_place, "save current view for restoring later(with key o)")
 cmd('[', specify_range, "set current commit as the begin of range")
 cmd(']', specify_range, "set current commit as the end of range")
 cmd('R', clear_range, "clear current range")
-cmd('.', search_with_filter, "search with filter")
+cmd(',', search_with_filter, "search with filter")
+cmd('.', search_with_filter, "search global forward with filter")
 
 cmd('#', help, "show this help")

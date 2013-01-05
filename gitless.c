@@ -125,6 +125,7 @@ enum {
 	STATE_INPUT_SEARCH_QUERY,
 	STATE_SEARCHING_QUERY,
 	STATE_INPUT_SEARCH_FILTER,
+	STATE_INPUT_SEARCH_FILTER2,
 	STATE_INPUT_SEARCH_DIRECTION,
 	STATE_HELP,
 };
@@ -402,6 +403,7 @@ static void update_terminal(void)
 	case STATE_INPUT_SEARCH_QUERY:
 	case STATE_SEARCHING_QUERY:
 	case STATE_INPUT_SEARCH_FILTER:
+	case STATE_INPUT_SEARCH_FILTER2:
 	case STATE_INPUT_SEARCH_DIRECTION:
 		update_terminal_default();
 		break;
@@ -518,14 +520,16 @@ static int contain_etx(char *buf, int begin, int end)
 	assert(begin <= end);
 
 	for (int i = begin; i < end; i++) {
-		switch (state) {
+		static int _state = 0;
+
+		switch (_state) {
 		case 0:
 			if (buf[i] == '\n')
-				state = 1;
+				_state = 1;
 			break;
 		case 1:
 			if (buf[i] != '\n') {
-				state = 0;
+				_state = 0;
 
 				if (buf[i] == 'c')
 					return i - 1;
@@ -533,7 +537,7 @@ static int contain_etx(char *buf, int begin, int end)
 
 			break;
 		default:
-			die("unknown state: %d", state);
+			die("unknown _state: %d", _state);
 			break;
 		}
 	}
@@ -1256,7 +1260,10 @@ static int clear_range(char cmd)
 static int search_with_filter(char cmd)
 {
 	bmprintf("input search filter(m(modified), a(at line), f(+++, ---): ");
-	state = STATE_INPUT_SEARCH_FILTER;
+	if (cmd == ',')
+		state = STATE_INPUT_SEARCH_FILTER;
+	else
+		state = STATE_INPUT_SEARCH_FILTER2;
 
 	return 1;
 }
@@ -1282,8 +1289,14 @@ static struct key_cmd valid_ops[] = {
 static int search_filter_modified_line(char cmd)
 {
 	match_filter = match_filter_modified;
-	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_MODIFIED;
+
+	if (state == STATE_INPUT_SEARCH_FILTER2) {
+		state = STATE_INPUT_SEARCH_DIRECTION;
+		return search(1, 1);
+	}
+
+	state = STATE_INPUT_SEARCH_DIRECTION;
 
 	bmprintf("type: %s, input search direction (/, ?, \\, !):",
 		current_match_type_str());
@@ -1294,8 +1307,14 @@ static int search_filter_modified_line(char cmd)
 static int search_filter_at_line(char cmd)
 {
 	match_filter = match_filter_at;
-	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_AT;
+
+	if (state == STATE_INPUT_SEARCH_FILTER2) {
+		state = STATE_INPUT_SEARCH_DIRECTION;
+		return search(1, 1);
+	}
+
+	state = STATE_INPUT_SEARCH_DIRECTION;
 
 	bmprintf("type: %s, input search direction (/, ?, \\, !):",
 		current_match_type_str());
@@ -1306,8 +1325,14 @@ static int search_filter_at_line(char cmd)
 static int search_filter_commit_message(char cmd)
 {
 	match_filter = match_filter_commit_message;
-	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_COMMIT_MESSAGE;
+
+	if (state == STATE_INPUT_SEARCH_FILTER2) {
+		state = STATE_INPUT_SEARCH_DIRECTION;
+		return search(1, 1);
+	}
+
+	state = STATE_INPUT_SEARCH_DIRECTION;
 
 	bmprintf("type: %s(not implemented yet!), input search direction (/, ?, \\, !):",
 		current_match_type_str());
@@ -1318,8 +1343,14 @@ static int search_filter_commit_message(char cmd)
 static int search_filter_file_line(char cmd)
 {
 	match_filter = match_filter_file;
-	state = STATE_INPUT_SEARCH_DIRECTION;
 	current_match_type = MATCH_TYPE_FILE;
+
+	if (state == STATE_INPUT_SEARCH_FILTER2) {
+		state = STATE_INPUT_SEARCH_DIRECTION;
+		return search(1, 1);
+	}
+
+	state = STATE_INPUT_SEARCH_DIRECTION;
 
 	bmprintf("type: %s, input search direction (/, ?, \\, !):",
 		current_match_type_str());
@@ -1473,6 +1504,7 @@ int main(void)
 
 		switch (state) {
 		case STATE_INPUT_SEARCH_FILTER:
+		case STATE_INPUT_SEARCH_FILTER2:
 			ret = search_filter_ops_array[(int)cmd](cmd);
 			break;
 
