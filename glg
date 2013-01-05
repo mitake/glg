@@ -1,3 +1,6 @@
 #! /bin/bash
 
 setsid git log -p $1 | gitless
+
+# todo: this might be a good alternative
+# setsid git log $1 | grep "^c" | sed -e 's/commit //g' | gitless
