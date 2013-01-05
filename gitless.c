@@ -215,12 +215,23 @@ static void init_tty(void)
 	update_row_col();
 }
 
-struct commit {
+enum commit_cached_state {
+	CACHED_STATE_PURGED,
+	CACHED_STATE_FILLED,
+};
+
+struct commit_cached {
+	enum commit_cached_state state;
+
 	char *text;
 	int text_size;
 
-	char **lines;	/* array of head characters of lines */
-	int lines_size, nr_lines;
+	char **lines;
+	int nr_lines, lines_size;
+};
+
+struct commit {
+	struct commit_cached cached;
 
 	int head_line;
 
@@ -233,6 +244,15 @@ struct commit {
 
 	char *commit_id, *summary;
 };
+
+static struct commit_cached *get_cached(struct commit *c)
+{
+	if (c->cached.state == CACHED_STATE_FILLED)
+		return &c->cached;
+
+	die("restoring cached is not implemented yet\n");
+	return NULL;
+}
 
 /* head: HEAD, root: root of the commit tree */
 static struct commit *head, *root;
@@ -277,14 +297,16 @@ static void update_terminal_default(void)
 	move(0, 0);
 	clear();
 
+	struct commit_cached *cached = get_cached(current);
+
 	int i;
 	for (i = current->head_line;
-	     i < current->head_line + row && i < current->nr_lines; i++) {
+	     i < current->head_line + row && i < cached->nr_lines; i++) {
 		int j;
 		char first_char;
 		char *line;
 
-		line = current->lines[i];
+		line = cached->lines[i];
 		first_char = line[0];
 
 		coloring(first_char, 1);
@@ -342,12 +364,12 @@ static void update_terminal_default(void)
 	move(row, 0);
 	attron(A_REVERSE);
 
-	if (current->nr_lines <= current->head_line + row)
+	if (cached->nr_lines <= current->head_line + row)
 		printw("100%%");
 	else
 		printw("% .0f%%",
 			(float)(current->head_line + row)
-			/ current->nr_lines * 100.0);
+			/ cached->nr_lines * 100.0);
 
 	printw("   ");
 	for (i = 0; i < 8; i++)
@@ -465,38 +487,40 @@ static int contain_visible_char(char *buf)
 
 static void init_commit(struct commit *c)
 {
-	c->lines_size = LINES_INIT_SIZE;
-	c->lines = xalloc(c->lines_size * sizeof(char *));
+	struct commit_cached *cached = get_cached(c);
 
-	char *text = c->text;
-	int text_size = c->text_size;
+	cached->lines_size = LINES_INIT_SIZE;
+	cached->lines = xalloc(cached->lines_size * sizeof(char *));
+
+	char *text = cached->text;
+	int text_size = cached->text_size;
 
 	char *line_head = text;
 	for (int i = 0; i < text_size; i++) {
 		if (text[i] != '\n')
 			continue;
 
-		c->lines[c->nr_lines++] = line_head;
+		cached->lines[cached->nr_lines++] = line_head;
 
 		if (line_head[0] == 'c') {
-			c->commit_id = xalloc(40);
+			c->commit_id = xalloc(41);
 			memcpy(c->commit_id, line_head + 7 /* strlen("commit ") */, 40);
 		}
 
 		line_head = &text[i + 1];
 
-		if (c->lines_size == c->nr_lines) {
-			c->lines_size <<= 1;
-			c->lines = xrealloc(c->lines,
-					c->lines_size * sizeof(char *));
+		if (cached->lines_size == cached->nr_lines) {
+			cached->lines_size <<= 1;
+			cached->lines = xrealloc(cached->lines,
+					cached->lines_size * sizeof(char *));
 		}
 	}
 
-	for (int i = 0; i < c->nr_lines; i++) {
+	for (int i = 0; i < cached->nr_lines; i++) {
 		int j, len, nli;
 		char *line;
 
-		line = c->lines[i];
+		line = cached->lines[i];
 
 		if ((j = contain_visible_char(line)) < 1)
 			continue;
@@ -607,10 +631,13 @@ static void read_commit(void)
 		current = head = tail = new_commit;
 	}
 
+	new_commit->cached.state = CACHED_STATE_FILLED;
+	struct commit_cached *cached = get_cached(new_commit);
+
 	int new_text_size = etx + 1/* for '\0' */;
-	new_commit->text = xalloc(new_text_size);
-	memcpy(new_commit->text, buf_from_git, new_text_size - 1);
-	new_commit->text_size = new_text_size;
+	cached->text = xalloc(new_text_size);
+	memcpy(cached->text, buf_from_git, new_text_size - 1);
+	cached->text_size = new_text_size;
 
 	init_commit(new_commit);
 
@@ -677,7 +704,9 @@ static int show_next_commit(char cmd)
 
 static int forward_line(char cmd)
 {
-	if (current->head_line + row < current->nr_lines) {
+	struct commit_cached *cached = get_cached(current);
+
+	if (current->head_line + row < cached->nr_lines) {
 		current->head_line++;
 		return 1;
 	}
@@ -706,16 +735,20 @@ static int goto_top(char cmd)
 
 static int goto_bottom(char cmd)
 {
-	if (current->nr_lines < row)
+	struct commit_cached *cached = get_cached(current);
+
+	if (cached->nr_lines < row)
 		return 0;
 
-	current->head_line = current->nr_lines - row;
+	current->head_line = cached->nr_lines - row;
 	return 1;
 }
 
 static int forward_page(char cmd)
 {
-	if (current->nr_lines < current->head_line + row)
+	struct commit_cached *cached = get_cached(current);
+
+	if (cached->nr_lines < current->head_line + row)
 		return 0;
 
 	current->head_line += row;
@@ -876,9 +909,11 @@ static int match_commit(struct commit *c, int direction, int prog)
 	int nli, result;
 	char *line;
 
+	struct commit_cached *cached = get_cached(c);
+
 	if (prog) {
 		if (direction) {
-			if (c->nr_lines <= i - 1)
+			if (cached->nr_lines <= i - 1)
 				return 0;
 		} else {
 			if (!i)
@@ -889,7 +924,7 @@ static int match_commit(struct commit *c, int direction, int prog)
 	}
 
 	do {
-		line = c->lines[i];
+		line = cached->lines[i];
 		nli = ret_nl_or_null_index(line);
 
 		line[nli] = '\0';
@@ -902,7 +937,7 @@ static int match_commit(struct commit *c, int direction, int prog)
 		}
 
 		i += direction ? 1 : -1;
-	} while (direction ? i < c->nr_lines : 0 <= i);
+	} while (direction ? i < cached->nr_lines : 0 <= i);
 
 	return 0;
 }
@@ -943,8 +978,10 @@ static int do_search(int direction, int global, int prog)
 	do {
 		if (direction)
 			p->head_line = 0;
-		else
-			p->head_line = p->nr_lines - 1;
+		else {
+			struct commit_cached *cached = get_cached(p);
+			p->head_line = cached->nr_lines - 1;
+		}
 
 		result = match_commit(p, direction, prog);
 		if (result)
