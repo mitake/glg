@@ -31,8 +31,6 @@
 #include <signal.h>
 #include <errno.h>
 
-#include <assert.h>
-
 #include <regex.h>
 #include <ncurses.h>
 
@@ -56,6 +54,18 @@ static char dying_msg[1024];
 			strerror(errno));				\
 		exit(1);						\
 	} while (0)
+
+#ifdef assert
+#undef assert
+#endif
+
+#define assert(expr)							\
+	((expr) ?							\
+	(void)0 :							\
+	(sprintf(dying_msg, "assert: %s:%d: %s: "			\
+		"Asserting `%s' failed.\n",				\
+		__FILE__, __LINE__, __func__, #expr),			\
+		exit(1)))
 
 #ifdef GIT_LESS_DEBUG
 static int debug_fd;
