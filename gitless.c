@@ -609,7 +609,7 @@ static void read_commit(void)
 
 	int new_text_size = etx + 1/* for '\0' */;
 	new_commit->text = xalloc(new_text_size);
-	memcpy(new_commit->text, buf_from_git, new_text_size);
+	memcpy(new_commit->text, buf_from_git, new_text_size - 1);
 	new_commit->text_size = new_text_size;
 
 	init_commit(new_commit);
