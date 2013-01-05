@@ -57,6 +57,20 @@ static char dying_msg[1024];
 		exit(1);						\
 	} while (0)
 
+#ifdef GIT_LESS_DEBUG
+static int debug_fd;
+
+#define dbgprintf(fmt, arg...)						\
+	do {								\
+		dprintf(debug_fd, "line %d: " fmt "\n",			\
+			__LINE__, ##arg);				\
+	} while (0)
+#else
+
+#define dbgprintf(fmt, arg...) do { } while (0)
+
+#endif
+
 static void *xalloc(size_t size)
 {
 	void *ret;
@@ -80,18 +94,15 @@ static void *xrealloc(void *ptr, size_t size)
 	return ret;
 }
 
-static int ret_nl_index(char *s)
+static int ret_nl_or_null_index(char *s)
 {
 	int i;
 
-	for (i = 0; s[i] != '\n'; i++);
+	for (i = 0; s[i] != '\n' && s[i] != '\0'; i++);
 	return i;
 }
 
 static int stdin_fd = 0, tty_fd;
-#ifdef GIT_LESS_DEBUG
-static int debug_fd;
-#endif
 static unsigned int row, col;
 static int searching, visiting_root;
 
@@ -193,18 +204,14 @@ static void init_tty(void)
 	update_row_col();
 }
 
-static char *logbuf;
-static int logbuf_size, logbuf_used;
-#define LOGBUF_INIT_SIZE 1024
-
-/* last_etx points last newline of previous commit */
-static int last_etx;
-
 struct commit {
-	unsigned int *lines;	/* array of index of logbuf */
-	int lines_size;
+	char *text;
+	int text_size;
 
-	int nr_lines, head_line;
+	char **lines;	/* array of head characters of lines */
+	int lines_size, nr_lines;
+
+	int head_line;
 
 	/*
 	 * caution:
@@ -256,27 +263,23 @@ static void coloring(char ch, int on)
 
 static void update_terminal_default(void)
 {
-	int i, j;
-	char *line;
-
 	move(0, 0);
 	clear();
 
-	/* eliminating first new line */
-	if (current != head && !current->head_line)
-		current->head_line = 1;
-
+	int i;
 	for (i = current->head_line;
 	     i < current->head_line + row && i < current->nr_lines; i++) {
+		int j;
 		char first_char;
+		char *line;
 
-		line = &logbuf[current->lines[i]];
+		line = current->lines[i];
 		first_char = line[0];
 
 		coloring(first_char, 1);
 
 		if (state == STATE_SEARCHING_QUERY) {
-			int ret, mi, nli = ret_nl_index(line);
+			int ret, mi, nli = ret_nl_or_null_index(line);
 			int rev = 0;
 
 			line[nli] = '\0';
@@ -448,47 +451,45 @@ static int contain_visible_char(char *buf)
 	return -1;
 }
 
-static void init_commit(struct commit *c, int first_index, int last_index)
+static void init_commit(struct commit *c)
 {
-	int i, line_head;
-
 	c->lines_size = LINES_INIT_SIZE;
-	c->lines = xalloc(c->lines_size * sizeof(int));
+	c->lines = xalloc(c->lines_size * sizeof(char *));
 
-	line_head = first_index;
+	char *text = c->text;
+	int text_size = c->text_size;
 
-	for (i = first_index; i < last_index; i++) {
-		if (logbuf[i] != '\n')
+	char *line_head = text;
+	for (int i = 0; i < text_size; i++) {
+		if (text[i] != '\n')
 			continue;
 
 		c->lines[c->nr_lines++] = line_head;
 
-		if (logbuf[line_head] == 'c') {
+		if (line_head[0] == 'c') {
 			c->commit_id = xalloc(40);
-			memcpy(c->commit_id,
-				&logbuf[line_head + 7 /* strlen("commit ") */],
-				40);
+			memcpy(c->commit_id, line_head + 7 /* strlen("commit ") */, 40);
 		}
 
-		line_head = i + 1;
+		line_head = &text[i + 1];
 
 		if (c->lines_size == c->nr_lines) {
 			c->lines_size <<= 1;
 			c->lines = xrealloc(c->lines,
-					c->lines_size * sizeof(int));
+					c->lines_size * sizeof(char *));
 		}
 	}
 
-	for (i = 0; i < c->nr_lines; i++) {
+	for (int i = 0; i < c->nr_lines; i++) {
 		int j, len, nli;
 		char *line;
 
-		line = &logbuf[c->lines[i]];
+		line = c->lines[i];
 
 		if ((j = contain_visible_char(line)) < 1)
 			continue;
 
-		nli = ret_nl_index(&line[j]);
+		nli = ret_nl_or_null_index(&line[j]);
 		line[j + nli] = '\0';
 		len = strlen(&line[j]);
 		c->summary = xalloc(len + 1);
@@ -502,22 +503,21 @@ static void init_commit(struct commit *c, int first_index, int last_index)
 	assert(c->summary);
 }
 
-static int contain_etx(int begin, int end)
+static int contain_etx(char *buf, int begin, int end)
 {
-	int i;
-	static int state = 0;
+	assert(begin <= end);
 
-	for (i = begin; i < end; i++) {
+	for (int i = begin; i < end; i++) {
 		switch (state) {
 		case 0:
-			if (logbuf[i] == '\n')
+			if (buf[i] == '\n')
 				state = 1;
 			break;
 		case 1:
-			if (logbuf[i] != '\n') {
+			if (buf[i] != '\n') {
 				state = 0;
 
-				if (logbuf[i] == 'c')
+				if (buf[i] == 'c')
 					return i - 1;
 			}
 
@@ -531,115 +531,96 @@ static int contain_etx(int begin, int end)
 	return -1;
 }
 
-static int read_end;
-
-static void read_head(void)
-{
-	int prev_logbuf_used = 0;
-
-	do {
-		int rbyte;
-
-		if (logbuf_used == logbuf_size) {
-			logbuf_size <<= 1;
-			logbuf = xrealloc(logbuf, logbuf_size);
-		}
-
-		rbyte = read(stdin_fd, &logbuf[logbuf_used],
-			logbuf_size - logbuf_used);
-
-		if (rbyte < 0) {
-			if (errno == EINTR)
-				continue;
-			else
-				die("read() failed");
-		}
-
-		if (!rbyte) {
-			if (logbuf_used) {
-				last_etx = logbuf_used;
-				read_end = 1;
-
-				break;
-			} else
-				exit(0); /* no input */
-		}
-
-		prev_logbuf_used = logbuf_used;
-		logbuf_used += rbyte;
-	} while ((last_etx =
-			contain_etx(prev_logbuf_used, logbuf_used)) == -1);
-
-	head = xalloc(sizeof(struct commit));
-	init_commit(head, 0, last_etx);
-
-	tail = current = head;
-}
+static char *buf_from_git;
+static int buf_from_git_size, buf_from_git_used;
 
 static void read_commit(void)
 {
-	int prev_last_etx = last_etx;
-	int prev_logbuf_used, first_logbuf_used;
-	struct commit *new_commit;
+	/*
+	 * read_end
+	 * 0: default
+	 * 1: read all data from git log, but buf_from_git still has data
+	 * 2: real end, no data in buf_from_git
+	 */
+	static int read_end;
 
-	if (read_end)
+	if (read_end == 2)
 		return;
 
-	if (last_etx + 1 < logbuf_used) {
-		unsigned int tmp_etx;
+	int etx, next_check = 0;
+	while ((etx = contain_etx(buf_from_git, next_check, buf_from_git_used)), etx == -1 || etx == 0) {
+		int ret =
+			read(stdin_fd,
+				buf_from_git + buf_from_git_used,
+				buf_from_git_size - buf_from_git_used);
 
-		tmp_etx = contain_etx(last_etx + 1, logbuf_used);
-		if (tmp_etx != -1) {
-			last_etx = tmp_etx;
-			goto skip_read;
-		}
-	}
+		if (ret < 0) {
+			if (errno == EINTR)
+				continue;
 
-	prev_logbuf_used = 0;
-	first_logbuf_used = logbuf_used;
-
-	do {
-		int rbyte;
-
-		if (logbuf_used == logbuf_size) {
-			logbuf_size <<= 1;
-			logbuf = xrealloc(logbuf, logbuf_size);
+			die("read() failed\n");
 		}
 
-		rbyte = read(stdin_fd, &logbuf[logbuf_used],
-			logbuf_size - logbuf_used);
-
-		if (errno == EINTR) {
-			errno = 0;
-			continue;
-		}
-
-		if (rbyte < 0)
-			die("read() failed");
-
-		if (!rbyte) {
+		if (!ret) {
 			read_end = 1;
-			last_etx = logbuf_used;
-
+			etx = buf_from_git_used;
 			break;
 		}
 
-		prev_logbuf_used = logbuf_used;
-		logbuf_used += rbyte;
-	} while ((last_etx =
-			contain_etx(prev_logbuf_used, logbuf_used)) == -1);
+		next_check = buf_from_git_used;
+		buf_from_git_used += ret;
 
-skip_read:
+		if (buf_from_git_size == buf_from_git_used) {
+			buf_from_git_size <<= 1;
 
-	new_commit = xalloc(sizeof(struct commit));
+			/* expand only */
+			buf_from_git = xrealloc(buf_from_git, buf_from_git_size);
+		}
+	}
 
-	assert(!tail->prev);
-	tail->prev = new_commit;
-	new_commit->next = tail;
+	struct commit *new_commit = xalloc(sizeof(*new_commit));
 
-	tail = new_commit;
+	if (tail) {
+		assert(!tail->prev);
 
-	init_commit(new_commit, prev_last_etx, last_etx);
+		tail->prev = new_commit;
+		new_commit->next = tail;
+		tail = new_commit;
+	} else {
+		/* very unlikely */
+		assert(!head && !tail);
+
+		current = head = tail = new_commit;
+	}
+
+	int new_text_size = etx + 1/* for '\0' */;
+	new_commit->text = xalloc(new_text_size);
+	memcpy(new_commit->text, buf_from_git, new_text_size);
+	new_commit->text_size = new_text_size;
+
+	init_commit(new_commit);
+
+	void safe_shift_memcpy(char *dst, char *src, size_t size)
+	{
+		for (int i = 0; i < size; i++) dst[i] = src[i];
+	}
+	buf_from_git_used -= etx + 1;
+	if (buf_from_git_used < 0) {
+		/* last commit */
+		assert(buf_from_git_used == -1);
+		assert(read_end == 1);
+		buf_from_git_used = 0;
+	} else
+		safe_shift_memcpy(buf_from_git, buf_from_git + etx + 1, buf_from_git_used);
+
+	if (!buf_from_git_used) {
+		read_end = 2;
+
+		free(buf_from_git);
+		buf_from_git_size = 0;
+	}
+
+	return;
 }
 
 static int show_prev_commit(char cmd)
@@ -894,8 +875,8 @@ static int match_commit(struct commit *c, int direction, int prog)
 	}
 
 	do {
-		line = &logbuf[c->lines[i]];
-		nli = ret_nl_index(line);
+		line = c->lines[i];
+		nli = ret_nl_or_null_index(line);
 
 		line[nli] = '\0';
 		result = match_line(line);
@@ -1436,10 +1417,10 @@ int main(void)
 	init_tty();
 	init_sighandler();
 
-	logbuf_size = LOGBUF_INIT_SIZE;
-	logbuf = xalloc(logbuf_size);
-	logbuf_used = 0;
-	read_head();
+	buf_from_git_size = 1024;
+	buf_from_git = xalloc(buf_from_git_size);
+
+	read_commit();
 
 	match_filter = match_filter_default;
 
