@@ -257,6 +257,9 @@ static void init_commit_lines(struct commit *c)
 	char *text = cached->text;
 	int text_size = cached->text_size;
 
+	cached->lines_size = LINES_INIT_SIZE;
+	cached->lines = xalloc(cached->lines_size * sizeof(char *));
+
 	char *line_head = text;
 	for (int i = 0; i < text_size; i++) {
 		if (text[i] != '\n')
@@ -338,6 +341,7 @@ static struct commit_cached *get_cached(struct commit *c)
 	assert(!c->cached.text);
 	c->cached.text = read_commit_with_git_show(c->commit_id);
 	init_commit_lines(c);
+	c->cached.state = CACHED_STATE_FILLED;
 
 	return &c->cached;
 }
@@ -354,12 +358,9 @@ static void init_commit(struct commit *c)
 		return -1;
 	}
 
-	struct commit_cached *cached = raw_get_cached(c);
-
-	cached->lines_size = LINES_INIT_SIZE;
-	cached->lines = xalloc(cached->lines_size * sizeof(char *));
-
 	init_commit_lines(c);
+
+	struct commit_cached *cached = raw_get_cached(c);
 
 	for (int i = 0; i < cached->nr_lines; i++) {
 		int j, len, nli;
