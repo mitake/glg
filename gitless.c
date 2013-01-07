@@ -245,6 +245,7 @@ struct commit {
 
 	/* size_next points next commit with smaller text size */
 	struct commit *size_next;
+	bool size_order_initialized;
 
 	char *commit_id, *summary;
 };
@@ -280,74 +281,10 @@ static void init_commit_lines(struct commit *c)
 					cached->lines_size * sizeof(char *));
 		}
 	}
-}
 
-static char *read_commit_with_git_show(char *commit_id)
-{
-	char *read_from_fd(int fd)
-	{
-		char *buf = xalloc(1024);
-		int buf_size = 1024;
+	if (c->summary)
+		return;
 
-		int rbytes = 0, ret;
-		while ((ret = read(fd, buf + rbytes, buf_size - rbytes))) {
-			if (ret == -1) {
-				if (errno == EINTR)
-					continue;
-
-				die("read() failed\n");
-			}
-
-			rbytes += ret;
-		}
-
-		return buf;
-	}
-
-	int pipefds[2];
-
-	if (pipe(pipefds))
-		die("pipe() failed\n");
-
-	char *ret;
-	pid_t pid = fork();
-	switch (pid) {
-	case 0:
-		close(1);
-		dup(pipefds[1]);
-		if (execlp("git", "show", commit_id, NULL))
-			die("execlp() failed\n");
-
-		break;
-
-	case -1:
-		die("fork() failed\n");
-		break;
-
-	default:
-		ret = read_from_fd(pipefds[0]);
-		waitpid(pid, NULL, 0);
-		break;
-	}
-
-	return ret;
-}
-
-static struct commit_cached *get_cached(struct commit *c)
-{
-	if (c->cached.state == CACHED_STATE_FILLED)
-		return &c->cached;
-
-	assert(!c->cached.text);
-	c->cached.text = read_commit_with_git_show(c->commit_id);
-	init_commit_lines(c);
-	c->cached.state = CACHED_STATE_FILLED;
-
-	return &c->cached;
-}
-
-static void init_commit(struct commit *c)
-{
 	int contain_visible_char(char *buf)
 	{
 		int len = strlen(buf);
@@ -357,10 +294,6 @@ static void init_commit(struct commit *c)
 
 		return -1;
 	}
-
-	init_commit_lines(c);
-
-	struct commit_cached *cached = raw_get_cached(c);
 
 	for (int i = 0; i < cached->nr_lines; i++) {
 		int j, len, nli;
@@ -380,16 +313,7 @@ static void init_commit(struct commit *c)
 
 		break;
 	}
-
-	assert(c->commit_id);
-	assert(c->summary);
 }
-
-/* head: HEAD, root: root of the commit tree */
-static struct commit *head, *root;
-/* current: current displaying commit, tail: tail of the read commits */
-static struct commit *current, *tail;
-static struct commit *range_begin, *range_end;
 
 static struct commit *size_order_head;
 
@@ -421,7 +345,7 @@ static void free_commits(size_t size)
 	total_alloced -= freed;
 }
 
-static void *text_alloc(struct commit *c)
+static void text_alloc(struct commit *c)
 {
 	struct commit_cached *cached = raw_get_cached(c);
 	size_t size = cached->text_size;
@@ -430,9 +354,12 @@ static void *text_alloc(struct commit *c)
 		free_commits(size);
 
 	total_alloced += size;
-	void *ret = calloc(sizeof(char), size);
-	if (!ret)
+	cached->text = calloc(sizeof(char), size);
+	if (!cached->text)
 		die("memory allocation failed");
+
+	if (c->size_order_initialized)
+		goto end;
 
 	if (!size_order_head) {
 		size_order_head = c;
@@ -459,16 +386,103 @@ static void *text_alloc(struct commit *c)
 		}
 
 		c->size_next = p;
-		size_prev->next = c;
+		size_prev->size_next = c;
 
 		goto end;
 	}
 
 	size_prev->size_next = c;
+	c->size_order_initialized = true;
+
 end:
-	return ret;
+	return;
 }
 
+static void read_commit_with_git_show(struct commit *c)
+{
+	char *read_from_fd(int fd, int *len)
+	{
+		static char *buf;
+		static int buf_size;
+
+		if (!buf) {
+			buf_size = 1024;
+			buf = xalloc(buf_size);
+		}
+
+		int rbytes = 0, ret;
+		while ((ret = read(fd, buf + rbytes, buf_size - rbytes))) {
+			if (ret == -1) {
+				if (errno == EINTR)
+					continue;
+
+				die("read() failed\n");
+			}
+
+			rbytes += ret;
+
+			if (rbytes == buf_size) {
+				/* expand only */
+				buf_size <<= 1;
+				buf = xrealloc(buf, buf_size);
+			}
+		}
+
+		*len = rbytes;
+		return buf;
+	}
+
+	int pipefds[2];
+	if (pipe(pipefds))
+		die("pipe() failed\n");
+
+	char *ret;
+	pid_t pid = fork();
+	switch (pid) {
+	case 0:
+		close(1);
+		dup(pipefds[1]);
+		close(pipefds[0]);
+		if (execlp("git", "git", "show", c->commit_id, NULL))
+			die("execlp() failed\n");
+
+		break;
+
+	case -1:
+		die("fork() failed\n");
+		break;
+
+	default:
+		close(pipefds[1]);
+		ret = read_from_fd(pipefds[0], &c->cached.text_size);
+		waitpid(pid, NULL, 0);
+		close(pipefds[0]);
+		break;
+	}
+
+	text_alloc(c);
+	memcpy(c->cached.text, ret, c->cached.text_size);
+}
+
+static struct commit_cached *get_cached(struct commit *c)
+{
+	if (c->cached.state == CACHED_STATE_FILLED)
+		return &c->cached;
+
+	dbgprintf("get_cached(): purged -> filled, %s\n", c->commit_id);
+	assert(!c->cached.text);
+	read_commit_with_git_show(c);
+	init_commit_lines(c);
+	c->cached.state = CACHED_STATE_FILLED;
+
+	return &c->cached;
+}
+
+/* head: HEAD, root: root of the commit tree */
+static struct commit *head, *root;
+/* current: current displaying commit, tail: tail of the read commits */
+static struct commit *current, *tail;
+static struct commit *range_begin, *range_end;
 
 static regex_t *re_compiled;
 
@@ -685,82 +699,37 @@ static int init_sighandler(void)
 	return 0;
 }
 
-static int contain_etx(char *buf, int begin, int end)
-{
-	assert(begin <= end);
-
-	for (int i = begin; i < end; i++) {
-		static int _state = 0;
-
-		switch (_state) {
-		case 0:
-			if (buf[i] == '\n')
-				_state = 1;
-			break;
-		case 1:
-			if (buf[i] != '\n') {
-				_state = 0;
-
-				if (buf[i] == 'c')
-					return i - 1;
-			}
-
-			break;
-		default:
-			die("unknown _state: %d", _state);
-			break;
-		}
-	}
-
-	return -1;
-}
-
-static char *buf_from_git;
-static int buf_from_git_size, buf_from_git_used;
-
 static void read_commit(void)
 {
-	/*
-	 * read_end
-	 * 0: default
-	 * 1: read all data from git log, but buf_from_git still has data
-	 * 2: real end, no data in buf_from_git
-	 */
 	static int read_end;
 
-	if (read_end == 2)
+	if (read_end)
 		return;
 
-	int etx, next_check = 0;
-	while ((etx = contain_etx(buf_from_git, next_check, buf_from_git_used)), etx == -1 || etx == 0) {
-		int ret =
-			read(stdin_fd,
-				buf_from_git + buf_from_git_used,
-				buf_from_git_size - buf_from_git_used);
 
-		if (ret < 0) {
+	char commit_id[41];	/* with '\0' */
+
+	int ret, rbytes = 0;
+
+	while ((ret = read(stdin_fd, commit_id + rbytes, 41 - rbytes))) {
+		if (ret == -1) {
 			if (errno == EINTR)
 				continue;
 
 			die("read() failed\n");
 		}
 
-		if (!ret) {
-			read_end = 1;
-			etx = buf_from_git_used;
+		rbytes += ret;
+		if (rbytes == 41)
 			break;
-		}
-
-		next_check = buf_from_git_used;
-		buf_from_git_used += ret;
-
-		if (buf_from_git_size == buf_from_git_used) {
-			buf_from_git_size <<= 1;
-
-			/* expand only */
-			buf_from_git = xrealloc(buf_from_git, buf_from_git_size);
-		}
 	}
+
+	if (!ret)
+		read_end = 1;
+	else
+		assert(commit_id[40] == '\n');
+
+	commit_id[40] = '\0';
 
 	struct commit *new_commit = xalloc(sizeof(*new_commit));
 
@@ -777,35 +746,9 @@ static void read_commit(void)
 		current = head = tail = new_commit;
 	}
 
-	new_commit->cached.state = CACHED_STATE_FILLED;
-	struct commit_cached *cached = get_cached(new_commit);
-
-	int new_text_size = etx + 1/* for '\0' */;
-	cached->text_size = new_text_size;
-	cached->text = text_alloc(new_commit);
-	memcpy(cached->text, buf_from_git, new_text_size - 1);
-
-	init_commit(new_commit);
-
-	void safe_shift_memcpy(char *dst, char *src, size_t size)
-	{
-		for (int i = 0; i < size; i++) dst[i] = src[i];
-	}
-	buf_from_git_used -= etx + 1;
-	if (buf_from_git_used < 0) {
-		/* last commit */
-		assert(buf_from_git_used == -1);
-		assert(read_end == 1);
-		buf_from_git_used = 0;
-	} else
-		safe_shift_memcpy(buf_from_git, buf_from_git + etx + 1, buf_from_git_used);
-
-	if (!buf_from_git_used) {
-		read_end = 2;
-
-		free(buf_from_git);
-		buf_from_git_size = 0;
-	}
+	new_commit->commit_id = xalloc(41);
+	memcpy(new_commit->commit_id, commit_id, 41);
+	new_commit->cached.state = CACHED_STATE_PURGED;
 
 	return;
 }
@@ -1640,9 +1583,6 @@ int main(void)
 
 	init_tty();
 	init_sighandler();
-
-	buf_from_git_size = 1024;
-	buf_from_git = xalloc(buf_from_git_size);
 
 	read_commit();
 
