@@ -1342,6 +1342,7 @@ static void git_checkout_b(void)
 	endwin();
 	printf("executing git... good luck\n");
 
+	/* TODO: check existence of branch here, before execlp() */
 	execlp("git", "git", "checkout", "-b",
 		checkout_branch_name, current->commit_id, NULL);
 	die("execlp() failed\n");
