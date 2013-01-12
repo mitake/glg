@@ -1720,6 +1720,9 @@ int main(void)
 				state = STATE_READ_BRANCHNAME_FOR_CHECKOUT;
 				bmprintf("input branch name: ");
 				break;
+			case 0x1b: /* escape */
+				state = STATE_DEFAULT;
+				break;
 			}
 
 			break;
