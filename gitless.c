@@ -1316,6 +1316,24 @@ static int git_rebase_i(void)
 	return 1;
 }
 
+static int git_bisect(void)
+{
+	if (!range_begin || !range_end) {
+		bmprintf("bisect begin and end are required before format-patch");
+		state = STATE_DEFAULT;
+
+		return 1;
+	}
+
+	endwin();
+
+	execlp("git", "git", "bisect", "start", range_end->commit_id, range_begin->commit_id, NULL);
+	die("execlp() failed\n");
+
+	/* never reach */
+	return 1;
+}
+
 static char checkout_branch_name[1024];
 static int branch_name_idx;
 
@@ -1331,7 +1349,7 @@ static void git_checkout_b(void)
 
 static int launch_git_command(char cmd)
 {
-	bmprintf("launch git command f (format-patch), r (rebase -i), c(checkout -b):");
+	bmprintf("launch git command f (format-patch), r (rebase -i), c(checkout -b), b(bisect):");
 	state = STATE_LAUNCH_GIT_COMMAND;
 	return 1;
 }
@@ -1719,6 +1737,9 @@ int main(void)
 			case 'c': /* checkout -b */
 				state = STATE_READ_BRANCHNAME_FOR_CHECKOUT;
 				bmprintf("input branch name: ");
+				break;
+			case 'b':  /* bisect */
+				ret = git_bisect();
 				break;
 			case 0x1b: /* escape */
 				state = STATE_DEFAULT;
