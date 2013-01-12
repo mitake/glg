@@ -128,6 +128,7 @@ enum {
 	STATE_INPUT_SEARCH_FILTER2,
 	STATE_INPUT_SEARCH_DIRECTION,
 	STATE_LAUNCH_GIT_COMMAND,
+	STATE_READ_BRANCHNAME_FOR_CHECKOUT,
 	STATE_HELP,
 };
 static int state = STATE_DEFAULT;
@@ -651,6 +652,7 @@ static void update_terminal(void)
 	case STATE_INPUT_SEARCH_FILTER2:
 	case STATE_INPUT_SEARCH_DIRECTION:
 	case STATE_LAUNCH_GIT_COMMAND:
+	case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
 		update_terminal_default();
 		break;
 
@@ -1314,9 +1316,22 @@ static int git_rebase_i(void)
 	return 1;
 }
 
+static char checkout_branch_name[1024];
+static int branch_name_idx;
+
+static void git_checkout_b(void)
+{
+	endwin();
+	printf("executing git... good luck\n");
+
+	execlp("git", "git", "checkout", "-b",
+		checkout_branch_name, current->commit_id, NULL);
+	die("execlp() failed\n");
+}
+
 static int launch_git_command(char cmd)
 {
-	bmprintf("launch git command f (format-patch), r(rebase -i):");
+	bmprintf("launch git command f (format-patch), r (rebase -i), c(checkout -b):");
 	state = STATE_LAUNCH_GIT_COMMAND;
 	return 1;
 }
@@ -1701,7 +1716,36 @@ int main(void)
 			case 'r': /* interactive rebase */
 				ret = git_rebase_i();
 				break;
+			case 'c': /* checkout -b */
+				state = STATE_READ_BRANCHNAME_FOR_CHECKOUT;
+				bmprintf("input branch name: ");
+				break;
 			}
+
+			break;
+
+		case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
+			if (cmd == (char)0x7f) {
+				/* backspace */
+				if (branch_name_idx)
+					checkout_branch_name[branch_name_idx--] = '\0';
+			} else if (cmd == (char)0x1b) {
+				/* escape */
+				memset(checkout_branch_name, 0, 1024);
+				branch_name_idx = 0;
+				state = STATE_DEFAULT;
+
+				goto checkout_end;
+			} else if (cmd == 0xd /* '\n' */) {
+				git_checkout_b();
+				goto checkout_end;
+			} else {
+				if (branch_name_idx < 1023)
+					checkout_branch_name[branch_name_idx++] = cmd;
+			}
+
+			bmprintf("input branch name: %s", checkout_branch_name);
+		checkout_end:
 
 			break;
 
