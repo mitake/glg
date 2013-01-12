@@ -1728,7 +1728,7 @@ int main(void)
 			if (cmd == (char)0x7f) {
 				/* backspace */
 				if (branch_name_idx)
-					checkout_branch_name[branch_name_idx--] = '\0';
+					checkout_branch_name[--branch_name_idx] = '\0';
 			} else if (cmd == (char)0x1b) {
 				/* escape */
 				memset(checkout_branch_name, 0, 1024);
