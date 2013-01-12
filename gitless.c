@@ -105,12 +105,11 @@ static void *xrealloc(void *ptr, size_t size)
 	return ret;
 }
 
-static int ret_nl_or_null_index(char *s)
+static int ret_nl_index(char *s)
 {
 	int i;
 
-	for (i = 0; s[i] != '\n' && s[i] != '\0'; i++);
-	return i;
+	for (i = 0; s[i] != '\n'; i++); return i;
 }
 
 static int stdin_fd = 0, tty_fd;
@@ -128,6 +127,7 @@ enum {
 	STATE_INPUT_SEARCH_FILTER,
 	STATE_INPUT_SEARCH_FILTER2,
 	STATE_INPUT_SEARCH_DIRECTION,
+	STATE_LAUNCH_GIT_COMMAND,
 	STATE_HELP,
 };
 static int state = STATE_DEFAULT;
@@ -304,7 +304,7 @@ static void init_commit_lines(struct commit *c)
 		if ((j = contain_visible_char(line)) < 1)
 			continue;
 
-		nli = ret_nl_or_null_index(&line[j]);
+		nli = ret_nl_index(&line[j]);
 		line[j + nli] = '\0';
 		len = strlen(&line[j]);
 		c->summary = xalloc(len + 1);
@@ -469,7 +469,6 @@ static struct commit_cached *get_cached(struct commit *c)
 	if (c->cached.state == CACHED_STATE_FILLED)
 		return &c->cached;
 
-	dbgprintf("get_cached(): purged -> filled, %s\n", c->commit_id);
 	assert(!c->cached.text);
 	read_commit_with_git_show(c);
 	init_commit_lines(c);
@@ -536,7 +535,7 @@ static void update_terminal_default(void)
 		coloring(first_char, 1);
 
 		if (state == STATE_SEARCHING_QUERY) {
-			int ret, mi, nli = ret_nl_or_null_index(line);
+			int ret, mi, nli = ret_nl_index(line);
 			int rev = 0;
 
 			line[nli] = '\0';
@@ -651,6 +650,7 @@ static void update_terminal(void)
 	case STATE_INPUT_SEARCH_FILTER:
 	case STATE_INPUT_SEARCH_FILTER2:
 	case STATE_INPUT_SEARCH_DIRECTION:
+	case STATE_LAUNCH_GIT_COMMAND:
 		update_terminal_default();
 		break;
 
@@ -705,7 +705,6 @@ static void read_commit(void)
 
 	if (read_end)
 		return;
-
 
 	char commit_id[41];	/* with '\0' */
 
@@ -1014,7 +1013,7 @@ static int match_commit(struct commit *c, int direction, int prog)
 
 	do {
 		line = cached->lines[i];
-		nli = ret_nl_or_null_index(line);
+		nli = ret_nl_index(line);
 
 		line[nli] = '\0';
 		result = match_line(line);
@@ -1270,6 +1269,56 @@ static int save_orig_place(char cmd)
 static int nop(char cmd)
 {
 	return 0;
+}
+
+static int git_format_patch(void)
+{
+	if (!range_begin || !range_end) {
+		bmprintf("range begin and end are required before format-patch");
+		state = STATE_DEFAULT;
+
+		return 1;
+	}
+
+	char range[83];
+	sprintf(range, "%s..%s", range_begin->commit_id, range_end->commit_id);
+	range[82] = '\0';
+
+	endwin();
+	printf("executing git... good luck!\n");
+
+	/* TODO: options for format-patch */
+	execlp("git", "git", "format-patch", range, NULL);
+	die("execlp() failed\n");
+
+	/* never reach */
+	return 1;
+}
+
+static int git_rebase_i(void)
+{
+	if (!range_begin) {
+		bmprintf("range begin is required before interactive rebase");
+		state = STATE_DEFAULT;
+
+		return 1;
+	}
+
+	endwin();
+	printf("executing git... good luck!\n");
+
+	execlp("git", "git", "rebase", "-i", range_begin->commit_id, NULL);
+	die("execlp() failed\n");
+
+	/* never reach */
+	return 1;
+}
+
+static int launch_git_command(char cmd)
+{
+	bmprintf("launch git command f (format-patch), r(rebase -i):");
+	state = STATE_LAUNCH_GIT_COMMAND;
+	return 1;
 }
 
 static int quit(char cmd)
@@ -1642,6 +1691,18 @@ int main(void)
 
 		case STATE_INPUT_SEARCH_DIRECTION:
 			ret = search_direction_ops_array[(int)cmd](cmd);
+			break;
+
+		case STATE_LAUNCH_GIT_COMMAND:
+			switch (cmd) {
+			case 'f': /* format-patch */
+				ret = git_format_patch();
+				break;
+			case 'r': /* interactive rebase */
+				ret = git_rebase_i();
+				break;
+			}
+
 			break;
 
 		case STATE_HELP:
