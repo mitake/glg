@@ -1288,7 +1288,7 @@ static int git_format_patch(void)
 	printf("executing git... good luck!\n");
 
 	/* TODO: options for format-patch */
-	execlp("git", "git", "format-patch", range, NULL);
+	execlp("git", "git", "format-patch", "--cover-letter", range, NULL);
 	die("execlp() failed\n");
 
 	/* never reach */
