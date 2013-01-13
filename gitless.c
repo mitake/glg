@@ -1273,6 +1273,20 @@ static int nop(char cmd)
 	return 0;
 }
 
+static struct commit* get_prev_or_current(struct commit *c)
+{
+	if (c->prev)
+		return c->prev;
+	else {
+		read_commit();
+		if (c->prev)
+			return c->prev;
+	}
+
+	/* hmm... */
+	return c;
+}
+
 static int git_format_patch(void)
 {
 	if (!range_begin || !range_end) {
@@ -1282,8 +1296,10 @@ static int git_format_patch(void)
 		return 1;
 	}
 
+	struct commit *prev_range_begin = get_prev_or_current(range_begin);
+
 	char range[83];
-	sprintf(range, "%s..%s", range_begin->commit_id, range_end->commit_id);
+	sprintf(range, "%s..%s", prev_range_begin->commit_id, range_end->commit_id);
 	range[82] = '\0';
 
 	endwin();
@@ -1306,10 +1322,12 @@ static int git_rebase_i(void)
 		return 1;
 	}
 
+	struct commit *prev_range_begin = get_prev_or_current(range_begin);
+
 	endwin();
 	printf("executing git... good luck!\n");
 
-	execlp("git", "git", "rebase", "-i", range_begin->commit_id, NULL);
+	execlp("git", "git", "rebase", "-i", prev_range_begin->commit_id, NULL);
 	die("execlp() failed\n");
 
 	/* never reach */
@@ -1325,9 +1343,12 @@ static int git_bisect(void)
 		return 1;
 	}
 
+	struct commit *prev_range_begin = get_prev_or_current(range_begin);
+
 	endwin();
 
-	execlp("git", "git", "bisect", "start", range_end->commit_id, range_begin->commit_id, NULL);
+	execlp("git", "git", "bisect", "start",
+		range_end->commit_id, prev_range_begin->commit_id, NULL);
 	die("execlp() failed\n");
 
 	/* never reach */
