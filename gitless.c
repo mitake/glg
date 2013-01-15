@@ -1318,19 +1318,12 @@ static int git_format_patch(void)
 
 static int git_rebase_i(void)
 {
-	if (!range_begin) {
-		bmprintf("range begin is required before interactive rebase");
-		state = STATE_DEFAULT;
-
-		return 1;
-	}
-
-	struct commit *prev_range_begin = get_prev_or_current(range_begin);
+	struct commit *prev = get_prev_or_current(current);
 
 	endwin();
 	printf("executing git... good luck!\n");
 
-	execlp("git", "git", "rebase", "-i", prev_range_begin->commit_id, NULL);
+	execlp("git", "git", "rebase", "-i", prev->commit_id, NULL);
 	die("execlp() failed\n");
 
 	/* never reach */
