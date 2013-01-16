@@ -1289,20 +1289,18 @@ static struct commit* get_prev_or_current(struct commit *c)
 
 static int git_format_patch(void)
 {
-	if (!range_begin) {
-		bmprintf("range begin is required before format-patch");
-		state = STATE_DEFAULT;
+	struct commit *begin = range_begin;
 
-		return 1;
-	}
+	if (!begin)
+		begin = current;
 
 	if (!range_end)
 		range_end = head;
 
-	struct commit *prev_range_begin = get_prev_or_current(range_begin);
+	struct commit *prev_begin = get_prev_or_current(begin);
 
 	char range[83];
-	sprintf(range, "%s..%s", prev_range_begin->commit_id, range_end->commit_id);
+	sprintf(range, "%s..%s", prev_begin->commit_id, range_end->commit_id);
 	range[82] = '\0';
 
 	endwin();
