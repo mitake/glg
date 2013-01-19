@@ -16,6 +16,8 @@ gitless: $(OBJS) default_cmd.def
 
 install: gitless
 	sudo cp gitless glg /usr/local/bin
+	sudo cp gco.py /usr/local/bin/gco
+	sudo chmod +x /usr/local/bin/gco
 
 cscope:
 	find . -name "*.[ch]" > cscope.files
