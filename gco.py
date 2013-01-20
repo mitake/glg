@@ -2,6 +2,7 @@
 # gco: a wrapper of git checkout
 
 import os, curses
+import re
 
 heads = []
 tags = []
@@ -20,8 +21,16 @@ git_top_dir = os.getcwd() + '/.git'
 heads_dir = git_top_dir + '/refs/heads'
 tags_dir = git_top_dir + '/refs/tags'
 
+def get_current_branch():
+    f = open(git_top_dir + '/HEAD')
+    line = f.readline()
+    # FIXME: is this always correct?
+    return re.match('ref: refs/heads/(\S+)', line).group(1)
+
 traverse_dir(heads, heads_dir, '')
 traverse_dir(tags, tags_dir, '')
+
+current_branch = get_current_branch()
 
 all_refs = heads + tags
 all_refs_len = len(all_refs)
@@ -43,6 +52,11 @@ def update_terminal():
 
         if color:
             w.attron(curses.A_REVERSE)
+
+        if ref == current_branch:
+            w.addch('*')
+        else:
+            w.addch(' ')
 
         w.addstr(ref)
         w.addch('\n')
