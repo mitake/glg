@@ -129,6 +129,7 @@ enum {
 	STATE_INPUT_SEARCH_DIRECTION,
 	STATE_LAUNCH_GIT_COMMAND,
 	STATE_READ_BRANCHNAME_FOR_CHECKOUT,
+	STATE_SHOW_CHANGED_FILES,
 	STATE_HELP,
 };
 static int state = STATE_DEFAULT;
@@ -230,6 +231,9 @@ struct commit_cached {
 
 	char **lines;
 	int nr_lines, lines_size;
+
+	char **file_list;
+	int nr_file_list, file_list_size;
 };
 
 struct commit {
@@ -313,6 +317,37 @@ static void init_commit_lines(struct commit *c)
 		line[j + nli] = '\n';
 
 		break;
+	}
+
+	for (int i = 0; i < cached->nr_lines; i++) {
+		char *l = cached->lines[i];
+		if (strlen(l) < 7 /* +++ b/ */)
+			continue;
+
+		const char *hdr = "+++ b/";
+		int hdr_len = strlen(hdr);
+		if (memcmp(l, hdr, hdr_len))
+			continue;
+
+		int nl = ret_nl_index(l);
+		l[nl] = '\0';
+		char *copied = strdup(l + hdr_len);
+		if (!copied)
+			die("strdup() failed\n");
+		l[nl] = '\n';
+
+		if (cached->nr_file_list == cached->file_list_size) {
+			if (!cached->file_list_size) {
+				assert(!cached->nr_file_list);
+				cached->file_list_size = 8;
+			} else
+				cached->file_list_size <<= 1;
+
+			cached->file_list = xrealloc(cached->file_list,
+						cached->file_list_size * sizeof(char *));
+		}
+
+		cached->file_list[cached->nr_file_list++] = copied;
 	}
 }
 
@@ -641,6 +676,24 @@ static void update_terminal_help(void)
 	refresh();
 }
 
+static void update_terminal_show_changed_files(void)
+{
+	move(0, 0);
+
+	printw("files changed in this commit:\n");
+
+	struct commit_cached *cached = get_cached(current);
+	int i;
+	for (i = 0; i < cached->nr_file_list; i++) {
+		printw(" %s\n", cached->file_list[i]);
+	}
+
+	while (i++ < row - 2)
+		addch('\n');
+
+	refresh();
+}
+
 
 static void update_terminal(void)
 {
@@ -654,6 +707,10 @@ static void update_terminal(void)
 	case STATE_LAUNCH_GIT_COMMAND:
 	case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
 		update_terminal_default();
+		break;
+
+	case STATE_SHOW_CHANGED_FILES:
+		update_terminal_show_changed_files();
 		break;
 
 	case STATE_HELP:
@@ -1370,6 +1427,12 @@ static int launch_git_command(char cmd)
 	return 1;
 }
 
+static int show_changed_files(char cmd)
+{
+	state = STATE_SHOW_CHANGED_FILES;
+	return 1;
+}
+
 static int quit(char cmd)
 {
 	running = 0;
@@ -1787,6 +1850,13 @@ int main(void)
 			bmprintf("input branch name: %s", checkout_branch_name);
 		checkout_end:
 
+			break;
+
+		case STATE_SHOW_CHANGED_FILES:
+			if (cmd == 'q') {
+				state = STATE_DEFAULT;
+				ret = 1;
+			}
 			break;
 
 		case STATE_HELP:

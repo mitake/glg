@@ -24,5 +24,6 @@ cmd('R', clear_range, "clear current range")
 cmd(',', search_with_filter, "search with filter")
 cmd('.', search_with_filter, "search global forward with filter")
 cmd('i', launch_git_command, "launch git command")
+cmd('f', show_changed_files, "show changed files in current commit")
 
 cmd('#', help, "show this help")
