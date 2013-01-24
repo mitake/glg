@@ -688,9 +688,10 @@ static void update_terminal_show_changed_files(void)
 		printw(" %s\n", cached->file_list[i]);
 	}
 
-	while (i++ < row - 2)
+	while (i++ < row - 1)
 		addch('\n');
 
+	printw("type 'q' to quit this mode\n");
 	refresh();
 }
 
