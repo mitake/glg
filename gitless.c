@@ -319,13 +319,14 @@ static void init_commit_lines(struct commit *c)
 		break;
 	}
 
+	const char *hdr = "+++ b/";
+	int hdr_len = strlen(hdr);
+
 	for (int i = 0; i < cached->nr_lines; i++) {
 		char *l = cached->lines[i];
-		if (strlen(l) < 7 /* +++ b/ */)
+		if (ret_nl_index(l) < 7 /* +++ b/ */)
 			continue;
 
-		const char *hdr = "+++ b/";
-		int hdr_len = strlen(hdr);
 		if (memcmp(l, hdr, hdr_len))
 			continue;
 
