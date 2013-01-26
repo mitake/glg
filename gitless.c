@@ -387,6 +387,7 @@ static void free_commits(size_t size)
 }
 
 static void text_alloc(struct commit *c)
+/* FIXME: clearly, I need a smart algorithm... */
 {
 	struct commit_cached *cached = raw_get_cached(c);
 	size_t size = cached->text_size;
