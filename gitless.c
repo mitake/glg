@@ -267,6 +267,7 @@ static void init_commit_lines(struct commit *c)
 	cached->lines = xalloc(cached->lines_size * sizeof(char *));
 
 	char *line_head = text;
+	cached->nr_lines = 0;
 	for (int i = 0; i < text_size; i++) {
 		if (text[i] != '\n')
 			continue;
@@ -354,7 +355,7 @@ static void init_commit_lines(struct commit *c)
 
 static struct commit *size_order_head;
 
-#define ALLOC_LIM (1 << 31)
+#define ALLOC_LIM (1 << 30)
 static size_t total_alloced;
 
 static void free_commits(size_t size)
@@ -379,6 +380,9 @@ static void free_commits(size_t size)
 			break;
 	}
 
+	if (freed < size)
+		die("memory allocation failed\n");
+
 	total_alloced -= freed;
 }
 
@@ -396,7 +400,7 @@ static void text_alloc(struct commit *c)
 		die("memory allocation failed");
 
 	if (c->size_order_initialized)
-		goto end;
+		return;
 
 	if (!size_order_head) {
 		size_order_head = c;
@@ -429,10 +433,9 @@ static void text_alloc(struct commit *c)
 	}
 
 	size_prev->size_next = c;
-	c->size_order_initialized = true;
 
 end:
-	return;
+	c->size_order_initialized = true;
 }
 
 static void read_commit_with_git_show(struct commit *c)
