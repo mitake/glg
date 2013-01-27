@@ -1409,7 +1409,7 @@ static int git_format_patch(bool force)
 	}
 
 	/* TODO: options for format-patch */
-	execlp("git", "git", "format-patch", "--cover-letter", range, NULL);
+	execlp("git", "git", "format-patch", "--cover-letter", "", range, NULL);
 	die("execlp() failed\n");
 
 	/* never reach */
