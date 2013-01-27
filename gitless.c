@@ -1434,15 +1434,12 @@ end_read_prefix:
 	fflush(stdout);
 
 	if (!force) {
-		int status;	/* we can't declare this between default: and waitpid()... */
 		pid_t pid = fork();
 		switch (pid) {
 		case -1:
 			die("fork() failed\n");
 			break;
-		case 0:
-			/* FIXME: "origin/master" is always suitable? */
-		{	/* FIXME!!! */
+		case 0:;
 			int pid2;
 			pid2 = fork();
 			switch (pid2) {
@@ -1456,10 +1453,11 @@ end_read_prefix:
 				waitpid(pid2, NULL, 0);
 				break;
 			}
-		}
+			/* FIXME: "origin/master" is always suitable? */
 			execlp("git", "git", "rebase", "origin/master", NULL);
 			break;
-		default:
+		default:;
+			int status;
 			waitpid(pid, &status, 0);
 			if (WEXITSTATUS(status)) {
 				/* if rebase found something, it returns 1 */
