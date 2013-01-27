@@ -1420,7 +1420,7 @@ read_prefix:
 	} else if (key == (char)0xd) {
 		/* enter */
 		goto end_read_prefix;
-	} else if (0x1b) {
+	} else if (key == 0x1b) {
 		/* escape, cancel of format-patch */
 		return 0;
 	}
