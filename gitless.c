@@ -1412,6 +1412,16 @@ static int git_bisect(void)
 	return 1;
 }
 
+static int git_revert(void)
+{
+	endwin();
+	execlp("git", "git", "revert", current->commit_id, NULL);
+	die("execlp() failed\n");
+
+	/* never reach */
+	return 1;
+}
+
 static char checkout_branch_name[1024];
 static int branch_name_idx;
 
@@ -1826,6 +1836,8 @@ int main(void)
 			case 'b':  /* bisect */
 				ret = git_bisect();
 				break;
+			case 'R': /* revert */
+				ret = git_revert();
 			case 0x1b: /* escape */
 				state = STATE_DEFAULT;
 				break;
