@@ -1434,6 +1434,7 @@ end_read_prefix:
 	fflush(stdout);
 
 	if (!force) {
+		/* FIXME: how should I treat a case of IP unreachable? */
 		pid_t pid = fork();
 		switch (pid) {
 		case -1:
