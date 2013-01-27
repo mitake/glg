@@ -1366,6 +1366,69 @@ static int git_format_patch(bool force)
 	sprintf(range, "%s..%s", prev_begin->commit_id, range_end->commit_id);
 	range[82] = '\0';
 
+	int ret;
+	char key = ' ';
+	bool retry = false;
+retry_cover_letter:;
+	bool need_cover_letter = false;
+	move(row, 0);
+	for (int i = 0; i < col; i++) printw(" ");
+	move(row, 0);
+	printw("%s%c need cover letter? (y/N): ", retry ? "invalid char: " : "", key);
+	refresh();
+
+	ret = read(tty_fd, &key, 1);
+	if (ret != 1)
+		die("read() failed");
+	switch (key) {
+	case 'y':
+	case 'Y':
+		need_cover_letter = true;
+		break;
+	case 'n':
+	case 'N':
+	case 0xd:		/* enter */
+		need_cover_letter = false;
+		break;
+	default:
+		retry = true;
+		goto retry_cover_letter;
+	}
+
+	char prefix[32];
+	int prefix_i = 0;
+	memset(prefix, 0, 32);
+read_prefix:
+	move(row, 0);
+	for (int i = 0; i < col; i++) printw(" ");
+	move(row, 0);
+	printw("prefix of the patchset%s: %s", prefix_i == 31 ? "max" : "", prefix);
+	refresh();
+
+	ret = read(tty_fd, &key, 1);
+	if (ret != 1)
+		die("read() failed");
+
+	if (key == (char)0x7f) {
+		/* backspace */
+		if (prefix_i)
+			prefix[--prefix_i] = '\0';
+		goto read_prefix;
+	} else if (key == (char)0xd) {
+		/* enter */
+		goto end_read_prefix;
+	}
+
+	if (prefix_i == 31) {
+		/* prefix is too long, simply ignore the inputted char */
+		goto read_prefix;
+	}
+
+	prefix[prefix_i++] = key;
+
+	goto read_prefix;
+
+end_read_prefix:
 	endwin();
 	printf("executing git... good luck!\n");
 	fflush(stdout);
@@ -1408,9 +1471,22 @@ static int git_format_patch(bool force)
 		}
 	}
 
-	/* TODO: options for format-patch */
-	execlp("git", "git", "format-patch", "--cover-letter", "", range, NULL);
-	die("execlp() failed\n");
+	static char *execvp_args[6];
+	int execvp_args_i = 0;
+	execvp_args[execvp_args_i++] = "git";
+	execvp_args[execvp_args_i++] = "format-patch";
+	if (need_cover_letter)
+		execvp_args[execvp_args_i++] = "--cover-letter";
+	if (strlen(prefix)) {
+		static char subject_prefix[64];
+		snprintf(subject_prefix, 64, "--subject-prefix=%s", prefix);
+		execvp_args[execvp_args_i++] = subject_prefix;
+	}
+	execvp_args[execvp_args_i++] = range;
+	execvp_args[execvp_args_i++] = NULL;
+
+	execvp("git", execvp_args);
+	die("execvp() failed\n");
 
 	/* never reach */
 	return 1;
