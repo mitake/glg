@@ -1350,7 +1350,7 @@ static struct commit* get_prev_or_current(struct commit *c)
 	return c;
 }
 
-static int git_format_patch(void)
+static int git_format_patch(bool force)
 {
 	struct commit *begin = range_begin;
 
@@ -1368,6 +1368,29 @@ static int git_format_patch(void)
 
 	endwin();
 	printf("executing git... good luck!\n");
+
+	if (!force) {
+		int status;	/* we can't declare this between default: and waitpid()... */
+		pid_t pid = fork();
+		switch (pid) {
+		case -1:
+			die("fork() failed\n");
+			break;
+		case 0:
+			/* FIXME: "origin/master" is always suitable? */
+			execlp("git", "git", "rebase", "origin/master", NULL);
+			break;
+		default:
+			waitpid(pid, &status, 0);
+			if (WEXITSTATUS(status)) {
+				/* if rebase did something, it returns 1 */
+				printf("rebase did something, you should check before posting patch!\n");
+				exit(0);
+			}
+
+			break;
+		}
+	}
 
 	/* TODO: options for format-patch */
 	execlp("git", "git", "format-patch", "--cover-letter", range, NULL);
@@ -1824,7 +1847,8 @@ int main(void)
 		case STATE_LAUNCH_GIT_COMMAND:
 			switch (cmd) {
 			case 'f': /* format-patch */
-				ret = git_format_patch();
+			case 'F':
+				ret = git_format_patch(cmd == 'F');
 				break;
 			case 'r': /* interactive rebase */
 				ret = git_rebase_i();
