@@ -1390,6 +1390,9 @@ retry_cover_letter:;
 	case 0xd:		/* enter */
 		need_cover_letter = false;
 		break;
+	case 0x1b:		/* escape */
+		/* cancel of format-patch */
+		return 0;
 	default:
 		retry = true;
 		goto retry_cover_letter;
@@ -1417,7 +1420,11 @@ read_prefix:
 	} else if (key == (char)0xd) {
 		/* enter */
 		goto end_read_prefix;
+	} else if (0x1b) {
+		/* escape, cancel of format-patch */
+		return 0;
 	}
+
 
 	if (prefix_i == 31) {
 		/* prefix is too long, simply ignore the inputted char */
@@ -1942,6 +1949,8 @@ int main(void)
 			case 'f': /* format-patch */
 			case 'F':
 				ret = git_format_patch(cmd == 'F');
+				/* return of this function means format-patch is canceled */
+				state = STATE_DEFAULT;
 				break;
 			case 'r': /* interactive rebase */
 				ret = git_rebase_i();
