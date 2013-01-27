@@ -1368,6 +1368,7 @@ static int git_format_patch(bool force)
 
 	endwin();
 	printf("executing git... good luck!\n");
+	fflush(stdout);
 
 	if (!force) {
 		int status;	/* we can't declare this between default: and waitpid()... */
@@ -1406,6 +1407,7 @@ static int git_rebase_i(void)
 
 	endwin();
 	printf("executing git... good luck!\n");
+	fflush(stdout);
 
 	execlp("git", "git", "rebase", "-i", prev->commit_id, NULL);
 	die("execlp() failed\n");
@@ -1452,6 +1454,7 @@ static void git_checkout_b(void)
 {
 	endwin();
 	printf("executing git... good luck\n");
+	fflush(stdout);
 
 	/* TODO: check existence of branch here, before execlp() */
 	execlp("git", "git", "checkout", "-b",
