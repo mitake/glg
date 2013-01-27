@@ -1379,13 +1379,28 @@ static int git_format_patch(bool force)
 			break;
 		case 0:
 			/* FIXME: "origin/master" is always suitable? */
+		{	/* FIXME!!! */
+			int pid2;
+			pid2 = fork();
+			switch (pid2) {
+			case 0:
+				execlp("git", "git", "remote", "update", NULL);
+				break;
+			case -1:
+				die("fork() failed\n");
+				break;
+			default:
+				waitpid(pid2, NULL, 0);
+				break;
+			}
+		}
 			execlp("git", "git", "rebase", "origin/master", NULL);
 			break;
 		default:
 			waitpid(pid, &status, 0);
 			if (WEXITSTATUS(status)) {
-				/* if rebase did something, it returns 1 */
-				printf("rebase did something, you should check before posting patch!\n");
+				/* if rebase found something, it returns 1 */
+				printf("rebase found something, you should check before posting patch!\n");
 				exit(0);
 			}
 
