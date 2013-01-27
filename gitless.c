@@ -1392,7 +1392,7 @@ retry_cover_letter:;
 		break;
 	case 0x1b:		/* escape */
 		/* cancel of format-patch */
-		return 0;
+		return 1;
 	default:
 		retry = true;
 		goto retry_cover_letter;
@@ -1422,7 +1422,7 @@ read_prefix:
 		goto end_read_prefix;
 	} else if (key == 0x1b) {
 		/* escape, cancel of format-patch */
-		return 0;
+		return 1;
 	}
 
 
