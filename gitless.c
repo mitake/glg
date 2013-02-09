@@ -253,6 +253,9 @@ struct commit {
 
 	char **file_list;
 	int nr_file_list, file_list_size;
+
+	char **commit_log;
+	int commit_log_lines;
 };
 
 #define raw_get_cached(c) (&c->cached) /* simply get pointer */
@@ -350,6 +353,52 @@ static void init_commit_lines(struct commit *c)
 		}
 
 		c->file_list[c->nr_file_list++] = copied;
+	}
+
+	int commit_log_begin_idx = -1, commit_log_end_idx = -1;
+	for (int state = 0, i = 0; i < cached->nr_lines; i++) {
+		char *l = cached->lines[i];
+
+		switch (state) {
+		case 0:
+			if (!strlen(l))
+				continue;
+
+			if (l[0] == ' ') {
+				state = 1; /* beginning of commit log */
+				commit_log_begin_idx = i;
+			}
+
+			break;
+		case 1:
+			if (l[0] == '\n') {
+				commit_log_end_idx = i;
+				break;
+			}
+
+			break;
+		default:
+			die("unknown state of commit log parser: %d\n", state);
+			break;
+		}
+	}
+
+	assert(commit_log_begin_idx != -1 && commit_log_end_idx != -1);
+
+	c->commit_log_lines = commit_log_end_idx - commit_log_begin_idx;
+	c->commit_log = xalloc(c->commit_log_lines * sizeof(char *));
+	for (int i = commit_log_begin_idx, j = 0; i < commit_log_end_idx; i++, j++) {
+		char *copied, *l;
+
+		l = cached->lines[i];
+		int nl = ret_nl_index(l);
+		l[nl] = '\0';
+		copied= strdup(l);
+		l[nl] = '\n';
+		if (!copied)
+			die("strdup() failed\n");
+
+		c->commit_log[j] = copied;
 	}
 }
 
