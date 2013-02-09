@@ -137,6 +137,12 @@ enum {
 };
 static int state = STATE_DEFAULT;
 
+enum search_type{
+	SEARCH_TYPE_REGEX,
+	SEARCH_TYPE_FTS,
+};
+static enum search_type current_search_type;
+
 #define BOTTOM_MESSAGE_INIT_SIZE 32
 static char *bottom_message;
 static int bottom_message_size = BOTTOM_MESSAGE_INIT_SIZE;
@@ -449,9 +455,9 @@ static void init_commit_lines(struct commit *c)
 		return 0;
 	}
 
-#define QUERY_LEN (1024 * 1024)
-	char select_query[QUERY_LEN];
-	snprintf(select_query, QUERY_LEN,
+#define SQLITE3_QUERY_LEN (1024 * 1024)
+	char select_query[SQLITE3_QUERY_LEN];
+	snprintf(select_query, SQLITE3_QUERY_LEN,
 		"select * from commit_log where name =\"%s\"",
 		c->commit_id);
 	sqlite3_exec(sqlite3_db, select_query, row_chk_cb, &cb_called, NULL);
@@ -460,8 +466,8 @@ static void init_commit_lines(struct commit *c)
 		/* we already inserted the commit */
 		return;
 
-	char insert_query[QUERY_LEN];
-	snprintf(insert_query, QUERY_LEN, "insert into commit_log values ('%s', '",
+	char insert_query[SQLITE3_QUERY_LEN];
+	snprintf(insert_query, SQLITE3_QUERY_LEN, "insert into commit_log values ('%s', '",
 		c->commit_id);
 	char *p = insert_query + strlen(insert_query);
 	for (int i = 0; i < c->commit_log_lines; i++) {
@@ -478,7 +484,7 @@ static void init_commit_lines(struct commit *c)
 			p++;
 		}
 	}
-	snprintf(p, QUERY_LEN, "')");
+	snprintf(p, SQLITE3_QUERY_LEN, "')");
 	sqlite3_exec(sqlite3_db, insert_query, NULL, NULL, NULL);
 }
 
@@ -704,7 +710,8 @@ static void update_terminal_default(void)
 
 		coloring(first_char, 1);
 
-		if (state == STATE_SEARCHING_QUERY) {
+		if (state == STATE_SEARCHING_QUERY &&
+			current_search_type == SEARCH_TYPE_REGEX) {
 			int ret, mi, nli = ret_nl_index(line);
 			int rev = 0;
 
@@ -1184,7 +1191,7 @@ static int match_line(char *line)
 	return 0;
 }
 
-static int match_commit(struct commit *c, int direction, int prog)
+static int match_commit_regex(struct commit *c, int direction, int prog)
 {
 	int i = c->head_line;
 	int nli, result;
@@ -1221,6 +1228,42 @@ static int match_commit(struct commit *c, int direction, int prog)
 	} while (direction ? i < cached->nr_lines : 0 <= i);
 
 	return 0;
+}
+
+static int match_commit_fts(struct commit *c)
+{
+	char fts_query[SQLITE3_QUERY_LEN];
+
+	get_cached(c);		/* dummy read for initializing sqlite3 table */
+
+	snprintf(fts_query, SQLITE3_QUERY_LEN,
+		"select * from commit_log where id=\"%s\" and log match \"%s\"",
+		c->commit_id, query);
+
+	int ret = 0;
+	
+	int match_cb(void *_ret, int nr_results, char **columns, char **column_names)
+	{
+		*(int *)_ret = 1;
+		return 0;
+	}
+
+	sqlite3_exec(sqlite3_db, fts_query, match_cb, &ret, NULL);
+
+	return ret;
+}
+
+static int match_commit(struct commit *c, int direction, int prog)
+{
+	if (current_search_type == SEARCH_TYPE_REGEX)
+		return match_commit_regex(c, direction, prog);
+	else {
+		assert(current_search_type == SEARCH_TYPE_FTS);
+		if (prog && c == current)
+			return 0;
+
+		return match_commit_fts(c);
+	}
 }
 
 static int do_search(int direction, int global, int prog)
@@ -1351,11 +1394,15 @@ static int _search(int key, int direction, int global)
 	}
 
 	if (state == STATE_SEARCHING_QUERY) {
-		if (re_compiled)
-			regfree(re_compiled);
-		else
-			re_compiled = xalloc(sizeof(regex_t));
-		regcomp(re_compiled, query, REG_ICASE);
+		if (current_search_type == SEARCH_TYPE_REGEX) {
+			if (re_compiled)
+				regfree(re_compiled);
+			else
+				re_compiled = xalloc(sizeof(regex_t));
+			regcomp(re_compiled, query, REG_ICASE);
+		} else {
+			assert(current_search_type == SEARCH_TYPE_FTS);
+		}
 
 		if (!do_search(direction, global, 0))
 			bmprintf("not found: %s", query);
@@ -1373,21 +1420,25 @@ static int search(int direction, int global)
 
 static int search_global_forward(char cmd)
 {
+	current_search_type = SEARCH_TYPE_REGEX;
 	return search(1, 1);
 }
 
 static int search_global_backward(char cmd)
 {
+	current_search_type = SEARCH_TYPE_REGEX;
 	return search(0, 1);
 }
 
 static int search_local_forward(char cmd)
 {
+	current_search_type = SEARCH_TYPE_REGEX;
 	return search(1, 0);
 }
 
 static int search_local_backward(char cmd)
 {
+	current_search_type = SEARCH_TYPE_REGEX;
 	return search(0, 0);
 }
 
@@ -1419,7 +1470,8 @@ static int input_query(char key)
 		return 1;
 	} else if (key == (char)0x1b) {
 		/* escape */
-		if (re_compiled) {
+		if (current_search_type == SEARCH_TYPE_REGEX
+			&& re_compiled) {
 			regfree(re_compiled);
 			free(re_compiled);
 			re_compiled = NULL;
@@ -1698,6 +1750,12 @@ static int show_changed_files(char cmd)
 {
 	state = STATE_SHOW_CHANGED_FILES;
 	return 1;
+}
+
+static int fts_commit_log(char cmd)
+{
+	current_search_type = SEARCH_TYPE_FTS;
+	return search(1, 1);
 }
 
 static int quit(char cmd)
