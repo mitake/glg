@@ -661,6 +661,9 @@ static struct commit *range_begin, *range_end;
 
 static regex_t *re_compiled;
 
+static char **tokenized_query;
+static int nr_tokenized_query, tokenized_query_size;
+
 static void coloring(char ch, int on)
 {
 	int color = 0;
@@ -710,47 +713,78 @@ static void update_terminal_default(void)
 
 		coloring(first_char, 1);
 
-		if (state == STATE_SEARCHING_QUERY &&
-			current_search_type == SEARCH_TYPE_REGEX) {
-			int ret, mi, nli = ret_nl_index(line);
-			int rev = 0;
+		if (state == STATE_SEARCHING_QUERY) {
+			if (current_search_type == SEARCH_TYPE_REGEX) {
+				int ret, mi, nli = ret_nl_index(line);
+				int rev = 0;
 
-			line[nli] = '\0';
-			ret = regexec(re_compiled, line,
-				match_array_size, match_array, 0);
-			line[nli] = '\n';
+				line[nli] = '\0';
+				ret = regexec(re_compiled, line,
+					match_array_size, match_array, 0);
+				line[nli] = '\n';
 
-			if (ret)
-				goto normal_print;
+				if (ret)
+					goto normal_print;
 
-			for (mi = j = 0; j < col && line[j] != '\n'; j++) {
-				if (j == match_array[mi].rm_so) {
-					attron(A_REVERSE);
-					rev = 1;
-				} else if (j == match_array[mi].rm_eo) {
-					attroff(A_REVERSE);
-					rev = 0;
+				for (mi = j = 0; j < col && line[j] != '\n'; j++) {
+					if (j == match_array[mi].rm_so) {
+						attron(A_REVERSE);
+						rev = 1;
+					} else if (j == match_array[mi].rm_eo) {
+						attroff(A_REVERSE);
+						rev = 0;
 
-					mi++;
+						mi++;
+					}
+
+					if (match_array[mi].rm_so
+						== match_array[mi].rm_eo) {
+						attroff(A_REVERSE);
+						rev = 0;
+
+						mi++;
+					}
+
+					addch(line[j]);
 				}
 
-				if (match_array[mi].rm_so
-					== match_array[mi].rm_eo) {
+				if (rev)
 					attroff(A_REVERSE);
-					rev = 0;
+			} else {
+				/* FIXME: disaster... */
 
-					mi++;
+				assert(current_search_type == SEARCH_TYPE_FTS);
+
+				int nli = ret_nl_index(line);
+				for (int i = 0; i < nli; i++) {
+				skip_token_print:
+
+					for (int j = 0; j < nr_tokenized_query; j++) {
+						char *q = tokenized_query[j];
+						int q_len = strlen(q);
+
+						if (nli - i < q_len)
+							continue;
+
+						if (strncmp(q, line + i, q_len))
+							continue;
+
+						attron(A_REVERSE);
+						for (int k = 0; k < q_len; k++)
+							addch(q[k]);
+						attroff(A_REVERSE);
+
+						i += q_len;
+						goto skip_token_print;
+					}
+
+					addch(line[i]);
 				}
-
-				addch(line[j]);
 			}
-
-			if (rev)
-				attroff(A_REVERSE);
 		} else {
-		normal_print:
-			for (j = 0; j < col && line[j] != '\n'; j++)
-				addch(line[j]);
+			normal_print:
+				for (j = 0; j < col && line[j] != '\n'; j++)
+					addch(line[j]);
 
 		}
 
@@ -1344,6 +1378,39 @@ static struct {
 	int head_line;
 } orig_place;
 
+static void tokenize_query(void)
+{
+	static char *duped_query;
+
+	if (duped_query)
+		free(duped_query);
+
+	duped_query= strdup(query);
+	if (!duped_query)
+		die("strdup() failed\n");
+
+	if (!tokenized_query) {
+		nr_tokenized_query = 0;
+		tokenized_query_size = 1;
+		tokenized_query = xalloc(tokenized_query_size * sizeof(char *));
+	}
+
+	char *saveptr;
+	tokenized_query[0] = strtok_r(duped_query, " ", &saveptr);
+	nr_tokenized_query = 1;
+
+	char *next_token;
+	while ((next_token = strtok_r(NULL, " ", &saveptr))) {
+		if (nr_tokenized_query == tokenized_query_size) {
+			tokenized_query_size *= 2;
+			tokenized_query =
+				xrealloc(tokenized_query, tokenized_query_size * sizeof(char *));
+		}
+
+		tokenized_query[nr_tokenized_query++] = next_token;
+	}
+}
+
 static int _search(int key, int direction, int global)
 {
 	current_direction = direction;
@@ -1381,6 +1448,10 @@ static int _search(int key, int direction, int global)
 
 			orig_place.commit = current;
 			orig_place.head_line = current->head_line;
+
+			if (current_search_type == SEARCH_TYPE_FTS)
+				tokenize_query();
+
 		} else {
 			query[query_used++] = (char)key;
 			update_query_bm();
