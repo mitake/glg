@@ -231,9 +231,6 @@ struct commit_cached {
 
 	char **lines;
 	int nr_lines, lines_size;
-
-	char **file_list;
-	int nr_file_list, file_list_size;
 };
 
 struct commit {
@@ -253,6 +250,9 @@ struct commit {
 	bool size_order_initialized;
 
 	char *commit_id, *summary;
+
+	char **file_list;
+	int nr_file_list, file_list_size;
 };
 
 #define raw_get_cached(c) (&c->cached) /* simply get pointer */
@@ -338,18 +338,18 @@ static void init_commit_lines(struct commit *c)
 			die("strdup() failed\n");
 		l[nl] = '\n';
 
-		if (cached->nr_file_list == cached->file_list_size) {
-			if (!cached->file_list_size) {
-				assert(!cached->nr_file_list);
-				cached->file_list_size = 8;
+		if (c->nr_file_list == c->file_list_size) {
+			if (!c->file_list_size) {
+				assert(!c->nr_file_list);
+				c->file_list_size = 8;
 			} else
-				cached->file_list_size <<= 1;
+				c->file_list_size <<= 1;
 
-			cached->file_list = xrealloc(cached->file_list,
-						cached->file_list_size * sizeof(char *));
+			c->file_list = xrealloc(c->file_list,
+						c->file_list_size * sizeof(char *));
 		}
 
-		cached->file_list[cached->nr_file_list++] = copied;
+		c->file_list[c->nr_file_list++] = copied;
 	}
 }
 
@@ -687,10 +687,9 @@ static void update_terminal_show_changed_files(void)
 
 	printw("files changed in this commit:\n");
 
-	struct commit_cached *cached = get_cached(current);
 	int i;
-	for (i = 0; i < cached->nr_file_list; i++) {
-		printw(" %s\n", cached->file_list[i]);
+	for (i = 0; i < current->nr_file_list; i++) {
+		printw(" %s\n", current->file_list[i]);
 	}
 
 	while (i++ < row - 1)
