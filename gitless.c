@@ -31,11 +31,14 @@
 #include <signal.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <limits.h>
 
 #include <regex.h>
 #include <ncurses.h>
 
 #include <stdbool.h>
+
+#include <sqlite3.h>
 
 #define GIT_LESS_DEBUG
 #define DEBUG_FILE_NAME "/tmp/git-less-debug"
@@ -216,6 +219,43 @@ static void init_tty(void)
 	init_pair(COLORING_COMMIT, COLOR_YELLOW, COLOR_BLACK);
 
 	update_row_col();
+}
+
+static sqlite3 *sqlite3_db;
+
+static void init_sqlite3(void)
+{
+	char sqlite3_file[PATH_MAX];
+	const char *sqlite3_file_rel = "/.git/gitless.sqlite3";
+
+	memset(sqlite3_file, 0, PATH_MAX);
+	getcwd(sqlite3_file, PATH_MAX);
+	strcpy(sqlite3_file + strlen(sqlite3_file), sqlite3_file_rel);
+
+	int ret;
+	ret = sqlite3_open(sqlite3_file, &sqlite3_db);
+	if (ret != SQLITE_OK)
+		die("sqlite3_open() failed\n");
+
+	bool cb_called = false;
+	int table_chk_cb(void *called, int nr_results, char **columns, char **column_names)
+	{
+		*(bool *)called = true;
+		return 0;
+	}
+
+	sqlite3_exec(sqlite3_db,
+		"select * from sqlite_master where name =\"commit_log\"",
+		table_chk_cb, &cb_called, NULL);
+
+	if (!cb_called) {
+		ret = sqlite3_exec(sqlite3_db,
+				"create virtual table commit_log"
+				" using fts4(id char(40), log text)",
+				NULL, NULL, NULL);
+		if (ret != SQLITE_OK)
+			die("creating table for FTS failed\n");
+	}
 }
 
 enum commit_cached_state {
@@ -400,6 +440,46 @@ static void init_commit_lines(struct commit *c)
 
 		c->commit_log[j] = copied;
 	}
+
+	/* insert commit log to sqlite3 for FTS */
+	bool cb_called = false;
+	int row_chk_cb(void *called, int nr_results, char **columns, char **column_names)
+	{
+		*(bool *)called = true;
+		return 0;
+	}
+
+#define QUERY_LEN (1024 * 1024)
+	char select_query[QUERY_LEN];
+	snprintf(select_query, QUERY_LEN,
+		"select * from commit_log where name =\"%s\"",
+		c->commit_id);
+	sqlite3_exec(sqlite3_db, select_query, row_chk_cb, &cb_called, NULL);
+
+	if (cb_called)
+		/* we already inserted the commit */
+		return;
+
+	char insert_query[QUERY_LEN];
+	snprintf(insert_query, QUERY_LEN, "insert into commit_log values ('%s', '",
+		c->commit_id);
+	char *p = insert_query + strlen(insert_query);
+	for (int i = 0; i < c->commit_log_lines; i++) {
+		char *l = c->commit_log[i];
+		int len = strlen(l);
+
+		for (int j = 0; j < len; j++) {
+			if (l[j] == '\'')
+				continue;
+			if (l[j] == '"')
+				continue;
+
+			*p = l[j];
+			p++;
+		}
+	}
+	snprintf(p, QUERY_LEN, "')");
+	sqlite3_exec(sqlite3_db, insert_query, NULL, NULL, NULL);
 }
 
 static struct commit *size_order_head;
@@ -1923,6 +2003,8 @@ int main(void)
 		die("failed fdopen() for debug_file");
 
 #endif
+
+	init_sqlite3();
 
 	bottom_message = xalloc(bottom_message_size);
 	match_array = xalloc(match_array_size * sizeof(regmatch_t));
