@@ -703,7 +703,7 @@ static void update_terminal_default(void)
 
 	int i;
 	for (i = current->head_line;
-	     i < current->head_line + row && i < cached->nr_lines; i++) {
+	     i < current->head_line + row - 1&& i < cached->nr_lines; i++) {
 		int j;
 		char first_char;
 		char *line;
@@ -792,10 +792,11 @@ static void update_terminal_default(void)
 		coloring(first_char, 0);
 	}
 
-	while (i++ < current->head_line + row)
+	while (i++ < current->head_line + row - 1)
 		addch('\n');
 
-	move(row, 0);
+	int bm_len = strlen(bottom_message);
+	move(row - !!bm_len, 0);
 	attron(A_REVERSE);
 
 	if (cached->nr_lines <= current->head_line + row)
@@ -808,13 +809,18 @@ static void update_terminal_default(void)
 	printw("   ");
 	for (i = 0; i < 8; i++)
 		printw("%c", current->commit_id[i]);
-	printw(", ");
-	printw("\"%s\"", current->summary);
+	printw(": ");
+
+	char summary[81];
+	snprintf(summary, 80, "%s", current->summary);
+	printw("%s", summary);
 	if (80 < strlen(current->summary))
 		printw("...");
 
-	if (strlen(bottom_message))
-		printw(": %s", bottom_message);
+	if (bm_len) {
+		move(row, 0);
+		printw("%s", bottom_message);
+	}
 
 	attroff(A_REVERSE);
 
