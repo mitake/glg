@@ -1080,6 +1080,9 @@ static int forward_page(char cmd)
 		return 0;
 
 	current->head_line += row;
+	if (cached->nr_lines < current->head_line + row)
+		current->head_line = cached->nr_lines - row;
+
 	return 1;
 }
 
