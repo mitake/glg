@@ -701,9 +701,12 @@ static void update_terminal_default(void)
 
 	struct commit_cached *cached = get_cached(current);
 
+	int bm_len = strlen(bottom_message);
+
 	int i;
 	for (i = current->head_line;
-	     i < current->head_line + row - 1&& i < cached->nr_lines; i++) {
+	     i < current->head_line + row - !!bm_len && i < cached->nr_lines;
+	     i++) {
 		int j;
 		char first_char;
 		char *line;
@@ -795,7 +798,6 @@ static void update_terminal_default(void)
 	while (i++ < current->head_line + row - 1)
 		addch('\n');
 
-	int bm_len = strlen(bottom_message);
 	move(row - !!bm_len, 0);
 	attron(A_REVERSE);
 
