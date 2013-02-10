@@ -2283,6 +2283,8 @@ int main(void)
 				branch_name_idx = 0;
 				state = STATE_DEFAULT;
 
+				memset(bottom_message, 0, bottom_message_size);
+
 				goto checkout_end;
 			} else if (cmd == 0xd /* '\n' */) {
 				git_checkout_b();
