@@ -1122,6 +1122,8 @@ static int show_root(char cmd)
 
 	if (root) {
 		current = root;
+		current->head_line = 0;
+
 		return 1;
 	}
 
@@ -1159,6 +1161,8 @@ static int show_head(char cmd)
 		current = range_end;
 	else
 		current = head;
+
+	current->head_line = 0;
 
 	return 1;
 }
@@ -1378,6 +1382,9 @@ static int do_search(int direction, int global, int prog)
 
 matched:
 	current = p;
+	if (current_search_type == SEARCH_TYPE_FTS)
+		current->head_line = 0;
+
 no_match:
 	searching = 0;
 
@@ -1387,10 +1394,12 @@ no_match:
 static int current_direction, current_global;
 
 #define update_query_bm()	do {					\
-		bmprintf("%s %s search (type: %s): %s",			\
+		bmprintf("%s %s search (filter: %s, type: %s): %s",	\
 			current_direction ? "forward" : "backward",	\
 			current_global ? "global" : "local",		\
 			current_match_type_str(),			\
+			current_search_type == SEARCH_TYPE_REGEX ?	\
+			"regex" : "FTS",				\
 			query);						\
 									\
 	} while (0)
@@ -1448,10 +1457,11 @@ static int _search(int key, int direction, int global)
 		query_used = 0;
 		bzero(query, QUERY_SIZE);
 
-		bmprintf("%s %s search (type: %s): ",
+		bmprintf("%s %s search (filter: %s, type: %s): ",
 			current_direction ? "forward" : "backward",
 			current_global ? "global" : "local",
-			current_match_type_str());
+			current_match_type_str(),
+			current_search_type == SEARCH_TYPE_REGEX ? "regex" : "FTS");
 
 		state = STATE_INPUT_SEARCH_QUERY;
 
