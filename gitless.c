@@ -812,6 +812,14 @@ static void update_terminal_default(void)
 			/ cached->nr_lines * 100.0);
 	p += strlen(p);
 
+	if (current->head_line + row < cached->nr_lines)
+		snprintf(p, row - strlen(p), " (%d/%d)",
+			current->head_line + row, cached->nr_lines);
+	else
+		snprintf(p, row - strlen(p), " (%d/%d)",
+			cached->nr_lines, cached->nr_lines);
+	p += strlen(p);
+
 	snprintf(p, row - strlen(p), "   ");
 	p += strlen(p);
 
