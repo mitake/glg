@@ -795,29 +795,40 @@ static void update_terminal_default(void)
 		coloring(first_char, 0);
 	}
 
-	while (i++ < current->head_line + row - 1)
+	while (i++ < current->head_line + row - !!bm_len)
 		addch('\n');
 
 	move(row - !!bm_len, 0);
 	attron(A_REVERSE);
 
+	char bm_buf[row + 1];	/* we are using C99 */
+	char *p = bm_buf;
+
 	if (cached->nr_lines <= current->head_line + row)
-		printw("100%%");
+		snprintf(p, row, "100%%");
 	else
-		printw("% .0f%%",
+		snprintf(p, row, "% .0f%%",
 			(float)(current->head_line + row)
 			/ cached->nr_lines * 100.0);
+	p += strlen(p);
 
-	printw("   ");
-	for (i = 0; i < 8; i++)
-		printw("%c", current->commit_id[i]);
-	printw(": ");
+	snprintf(p, row - strlen(p), "   ");
+	p += strlen(p);
+
+	for (i = 0; i < 8; i++) {
+		snprintf(p, row - strlen(p), "%c",
+			current->commit_id[i]);
+		p += strlen(p);
+	}
+	snprintf(p, row - strlen(p), ": ");
+	p += strlen(p);
 
 	char summary[81];
 	snprintf(summary, 80, "%s", current->summary);
-	printw("%s", summary);
-	if (80 < strlen(current->summary))
-		printw("...");
+	snprintf(p, row - strlen(p), "%s", summary);
+	p += strlen(p);
+
+	printw("%s", bm_buf);
 
 	if (bm_len) {
 		move(row, 0);
