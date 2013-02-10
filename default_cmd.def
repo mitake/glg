@@ -26,5 +26,6 @@ cmd('.', search_with_filter, "search global forward with filter")
 cmd('i', launch_git_command, "launch git command")
 cmd('f', show_changed_files, "show changed files in current commit")
 cmd('F', fts_commit_log, "full text search on commit log")
+cmd(0x1b, stop_search, "stop current search")
 
 cmd('#', help, "show this help")

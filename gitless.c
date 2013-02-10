@@ -1957,6 +1957,16 @@ static int search_with_filter(char cmd)
 	return 1;
 }
 
+static int stop_search(char cmd)
+{
+	if (state == STATE_SEARCHING_QUERY) {
+		state = STATE_DEFAULT;
+		memset(bottom_message, 0, bottom_message_size);
+	}
+
+	return 1;
+}
+
 static int help(char cmd)
 {
 	state = STATE_HELP;
