@@ -2252,6 +2252,8 @@ int main(void)
 				ret = git_format_patch(cmd == 'F');
 				/* return of this function means format-patch is canceled */
 				state = STATE_DEFAULT;
+				memset(bottom_message, 0, bottom_message_size);
+
 				break;
 			case 'r': /* interactive rebase */
 				ret = git_rebase_i();
