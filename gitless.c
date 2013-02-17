@@ -117,7 +117,7 @@ static int ret_nl_index(char *s)
 
 static int stdin_fd = 0, tty_fd;
 static unsigned int row, col;
-static int searching, visiting_root;
+static int searching;
 
 #define LINES_INIT_SIZE 128
 
@@ -134,6 +134,22 @@ enum {
 	STATE_HELP,
 };
 static int state = STATE_DEFAULT;
+
+enum long_run {
+	LONG_RUN_DEFAULT,
+	LONG_RUN_RUNNING,
+	LONG_RUN_STOPPED,
+};
+static enum long_run state_long_run = LONG_RUN_DEFAULT;
+/*
+ * long_run_command(): called in the main loop when state_long_run == true
+ * return 1 when the iteration ends. return 0 for continuing.
+ */
+static int (*long_run_command)(void);
+/*
+ * long_run_command_compl(): called after completion of long running command
+ */
+static void (*long_run_command_compl)(bool stopped);
 
 enum search_type{
 	SEARCH_TYPE_REGEX,
@@ -934,10 +950,8 @@ static void signal_handler(int signum)
 	case SIGINT:
 		if (searching)
 			searching = 0;
-		else if (visiting_root)
-			visiting_root = 0;
-		else
-			running = 0;
+		else		/* FIXME: use signalfd */
+			state_long_run = LONG_RUN_STOPPED;
 		break;
 
 	default:
@@ -1117,10 +1131,37 @@ static int backward_page(char cmd)
 	return 1;
 }
 
+static struct commit *orig_before_visit_root;
+
+static int long_run_command_visit_root(void)
+{
+	if (!current->prev)
+		read_commit();
+
+	if (!current->prev) {
+		long_run_command = NULL;
+		return 1;
+	}
+
+	current = current->prev;
+	return 0;
+}
+
+static void long_run_command_compl_visit_root(bool stopped)
+{
+	if (!stopped)
+		goto end;
+
+	current = orig_before_visit_root;
+	bmprintf("stop visiting root commit");
+
+end:
+	orig_before_visit_root = NULL;
+	memset(bottom_message, 0, bottom_message_size);
+}
+
 static int show_root(char cmd)
 {
-	struct commit *p = current;
-
 	if (range_begin) {
 		current = range_begin;
 		return 1;
@@ -1133,28 +1174,12 @@ static int show_root(char cmd)
 		return 1;
 	}
 
-	visiting_root = 1;
+	orig_before_visit_root = current;
+	long_run_command = long_run_command_visit_root;
+	long_run_command_compl = long_run_command_compl_visit_root;
+	state_long_run = LONG_RUN_RUNNING;
 
-	do {
-		if (!current->prev)
-			read_commit();
-
-		if (!current->prev)
-			break;
-
-		current = current->prev;
-	} while (visiting_root);
-
-	if (!visiting_root) {
-		current = p;
-		bmprintf("stop visiting root commit");
-	} else {
-		visiting_root = 0;
-
-		assert(!root);
-		root = current;
-	}
-
+	bmprintf("visiting root commit...");
 	return 1;
 }
 
@@ -2218,115 +2243,140 @@ int main(void)
 			= search_direction_ops[i].op;
 
 	while (running) {
-		int ret;
+		int ret = 0;
 
-		ret = read(tty_fd, &cmd, 1);
-		if (ret == -1 && errno == EINTR) {
-			if (!running)
-				break;
+		if (state_long_run != LONG_RUN_DEFAULT) {
+			assert(long_run_command);
+			assert(long_run_command_compl);
 
-			errno = 0;
-			continue;
-		}
-
-		if (ret != 1)
-			die("reading key input failed");
-
-		switch (state) {
-		case STATE_INPUT_SEARCH_FILTER:
-		case STATE_INPUT_SEARCH_FILTER2:
-			ret = search_filter_ops_array[(int)cmd](cmd);
-			break;
-
-		case STATE_INPUT_SEARCH_QUERY:
-			ret = input_query(cmd);
-			break;
-
-		case STATE_SEARCHING_QUERY:
-		case STATE_DEFAULT:
-			ret = ops_array[(int)cmd](cmd);
-			break;
-
-		case STATE_INPUT_SEARCH_DIRECTION:
-			ret = search_direction_ops_array[(int)cmd](cmd);
-			break;
-
-		case STATE_LAUNCH_GIT_COMMAND:
-			switch (cmd) {
-			case 'f': /* format-patch */
-			case 'F':
-				ret = git_format_patch(cmd == 'F');
-				/* return of this function means format-patch is canceled */
-				state = STATE_DEFAULT;
-				memset(bottom_message, 0, bottom_message_size);
+			switch (state_long_run) {
+			case LONG_RUN_RUNNING:
+				if (long_run_command()) {
+					long_run_command_compl(false);
+					goto long_run_end;
+				}
 
 				break;
-			case 'r': /* interactive rebase */
-				ret = git_rebase_i();
-				break;
-			case 'c': /* checkout -b */
-				state = STATE_READ_BRANCHNAME_FOR_CHECKOUT;
-				bmprintf("input branch name: ");
-				break;
-			case 'b':  /* bisect */
-				ret = git_bisect();
-				break;
-			case 'R': /* revert */
-				ret = git_revert();
-			case 0x1b: /* escape */
-				state = STATE_DEFAULT;
-				break;
-			}
+			case LONG_RUN_STOPPED:
+				long_run_command_compl(true);
 
-			break;
-
-		case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
-			if (cmd == (char)0x7f) {
-				/* backspace */
-				if (branch_name_idx)
-					checkout_branch_name[--branch_name_idx] = '\0';
-			} else if (cmd == (char)0x1b) {
-				/* escape */
-				memset(checkout_branch_name, 0, 1024);
-				branch_name_idx = 0;
-				state = STATE_DEFAULT;
-
-				memset(bottom_message, 0, bottom_message_size);
-
-				goto checkout_end;
-			} else if (cmd == 0xd /* '\n' */) {
-				git_checkout_b();
-				goto checkout_end;
-			} else {
-				if (branch_name_idx < 1023)
-					checkout_branch_name[branch_name_idx++] = cmd;
-			}
-
-			bmprintf("input branch name: %s", checkout_branch_name);
-		checkout_end:
-
-			break;
-
-		case STATE_SHOW_CHANGED_FILES:
-			if (cmd == 'q') {
-				state = STATE_DEFAULT;
+			long_run_end:
+				state_long_run = LONG_RUN_DEFAULT;
 				ret = 1;
+
+				break;
+			default:
+				die("unknown state_long_run: %d", state_long_run);
+				break;
 			}
-			break;
+		} else {
+			ret = read(tty_fd, &cmd, 1);
+			if (ret == -1 && errno == EINTR) {
+				if (!running)
+					break;
 
-		case STATE_HELP:
-			if (cmd == 'q') {
-				state = STATE_DEFAULT;
-				ret = 1;
-			} else
-				ret = 0;
+				errno = 0;
+				continue;
+			}
 
-			break;
-		default:
-			die("invalid state: %d\n", state);
-			break;
+			if (ret != 1)
+				die("reading key input failed");
+
+			switch (state) {
+			case STATE_INPUT_SEARCH_FILTER:
+			case STATE_INPUT_SEARCH_FILTER2:
+				ret = search_filter_ops_array[(int)cmd](cmd);
+				break;
+
+			case STATE_INPUT_SEARCH_QUERY:
+				ret = input_query(cmd);
+				break;
+
+			case STATE_SEARCHING_QUERY:
+			case STATE_DEFAULT:
+				ret = ops_array[(int)cmd](cmd);
+				break;
+
+			case STATE_INPUT_SEARCH_DIRECTION:
+				ret = search_direction_ops_array[(int)cmd](cmd);
+				break;
+
+			case STATE_LAUNCH_GIT_COMMAND:
+				switch (cmd) {
+				case 'f': /* format-patch */
+				case 'F':
+					ret = git_format_patch(cmd == 'F');
+					/* return of this function means format-patch is canceled */
+					state = STATE_DEFAULT;
+					memset(bottom_message, 0, bottom_message_size);
+
+					break;
+				case 'r': /* interactive rebase */
+					ret = git_rebase_i();
+					break;
+				case 'c': /* checkout -b */
+					state = STATE_READ_BRANCHNAME_FOR_CHECKOUT;
+					bmprintf("input branch name: ");
+					break;
+				case 'b':  /* bisect */
+					ret = git_bisect();
+					break;
+				case 'R': /* revert */
+					ret = git_revert();
+				case 0x1b: /* escape */
+					state = STATE_DEFAULT;
+					break;
+				}
+
+				break;
+
+			case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
+				if (cmd == (char)0x7f) {
+					/* backspace */
+					if (branch_name_idx)
+						checkout_branch_name[--branch_name_idx] = '\0';
+				} else if (cmd == (char)0x1b) {
+					/* escape */
+					memset(checkout_branch_name, 0, 1024);
+					branch_name_idx = 0;
+					state = STATE_DEFAULT;
+
+					memset(bottom_message, 0, bottom_message_size);
+
+					goto checkout_end;
+				} else if (cmd == 0xd /* '\n' */) {
+					git_checkout_b();
+					goto checkout_end;
+				} else {
+					if (branch_name_idx < 1023)
+						checkout_branch_name[branch_name_idx++] = cmd;
+				}
+
+				bmprintf("input branch name: %s", checkout_branch_name);
+			checkout_end:
+
+				break;
+
+			case STATE_SHOW_CHANGED_FILES:
+				if (cmd == 'q') {
+					state = STATE_DEFAULT;
+					ret = 1;
+				}
+				break;
+
+			case STATE_HELP:
+				if (cmd == 'q') {
+					state = STATE_DEFAULT;
+					ret = 1;
+				} else
+					ret = 0;
+
+				break;
+			default:
+				die("invalid state: %d\n", state);
+				break;
+			}
 		}
-
 		if (ret)
 			update_terminal();
 	}
