@@ -1376,7 +1376,7 @@ static int match_commit(struct commit *c, int direction, int prog)
 	}
 }
 
-static int current_direction, current_global, current_prog;
+static int current_direction, current_global;
 
 #define update_query_bm()	do {					\
 		bmprintf("%s %s search (filter: %s, type: %s): %s",	\
@@ -1413,27 +1413,19 @@ end:
 	orig_before_do_search = NULL;
 }
 
-static int long_run_command_do_search_call_count;
-
 static int long_run_command_do_search(void)
 {
 	int result = 0;
 
-	long_run_command_do_search_call_count++;
-
-	if (1 < long_run_command_do_search_call_count) {
-		if (current_direction)
+	result = match_commit(current, current_direction, 0);
+	if (result) {
+		if (current_search_type == SEARCH_TYPE_FTS)
 			current->head_line = 0;
-		else {
-			struct commit_cached *cached = get_cached(current);
-			current->head_line = cached->nr_lines - 1;
-		}
-	}
 
-	result = match_commit(current, current_direction,
-			long_run_command_do_search_call_count == 1 ? current_prog : 0);
-	if (result)
-		goto match;
+		search_found = true;
+
+		return 1;
+	}
 
 	if (current_direction) {
 		if (current == range_begin)
@@ -1458,14 +1450,6 @@ static int long_run_command_do_search(void)
 
 	return 0;
 
-match:
-	if (current_search_type == SEARCH_TYPE_FTS)
-		current->head_line = 0;
-
-	search_found = true;
-
-	return 1;
-
 not_found:
 	bmprintf("not found: %s", query);
 	search_found = false;
@@ -1478,15 +1462,14 @@ static int do_search(int direction, int global, int prog)
 	int result;
 
 	result = match_commit(current, direction, prog);
+	if (result)
+		return 1;
 	if (!global)
 		return 0;
 
-	if (result)
-		return 1;
-
 	orig_before_do_search = current;
 
-	if (current_direction) {
+	if (direction) {
 		if (current == range_begin)
 			return 0;
 
@@ -1509,9 +1492,6 @@ static int do_search(int direction, int global, int prog)
 
 	current_direction = direction;
 	current_global = global;
-	current_prog = prog;
-
-	long_run_command_do_search_call_count = 0;
 
 	assert(!long_run_command);
 	assert(!long_run_command_compl);
@@ -1520,6 +1500,7 @@ static int do_search(int direction, int global, int prog)
 
 	assert(state_long_run == LONG_RUN_DEFAULT);
 	state_long_run = LONG_RUN_RUNNING;
+	search_found = false;
 
 	return -1;
 }
@@ -1637,7 +1618,7 @@ static int _search(int key, int direction, int global)
 			break;
 		case -1:	/* do nothing, continue */
 			assert(state_long_run == LONG_RUN_RUNNING);
-			break;
+			return 0;
 		default:
 			die("invalid return value from do_search(): %d\n", result);
 			break;
@@ -1683,12 +1664,19 @@ static int search_progress(char cmd)
 
 	assert(cmd == 'n' || cmd == 'p');
 
-	if (!do_search(cmd == 'n' ? 1 : 0, current_global, 1))
+	int res = do_search(cmd == 'n' ? 1 : 0, current_global, 1);
+	switch (res) {
+	case 0:
 		bmprintf("not found: %s", query);
-	else
+	case 1:
+		return 1;
+	case -1:
 		update_query_bm();
-
-	return 1;
+		return 0;
+	default:
+		die("invalid return value of do_search(): %d", res);
+		return 0;	/* suppress compiler warning */
+	}
 }
 
 static int input_query(char key)
