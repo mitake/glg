@@ -1446,6 +1446,8 @@ static int long_run_command_do_search(void)
 			current = current->next;
 		else
 			goto not_found;
+
+		current->head_line = get_cached(current)->nr_lines - 1;
 	}
 
 	return 0;
@@ -1488,6 +1490,8 @@ static int do_search(int direction, int global, int prog)
 			current = current->next;
 		else
 			return 0;
+
+		current->head_line = get_cached(current)->nr_lines - 1;
 	}
 
 	current_direction = direction;
