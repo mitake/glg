@@ -32,6 +32,8 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <limits.h>
+#include <sys/signalfd.h>
+#include <poll.h>
 
 #include <regex.h>
 #include <ncurses.h>
@@ -117,7 +119,6 @@ static int ret_nl_index(char *s)
 
 static int stdin_fd = 0, tty_fd;
 static unsigned int row, col;
-static int searching;
 
 #define LINES_INIT_SIZE 128
 
@@ -948,9 +949,8 @@ static void signal_handler(int signum)
 		break;
 
 	case SIGINT:
-		if (searching)
-			searching = 0;
-		else		/* FIXME: use signalfd */
+		if (state_long_run == LONG_RUN_RUNNING)
+			/* FIXME: use signalfd */
 			state_long_run = LONG_RUN_STOPPED;
 		break;
 
@@ -960,16 +960,24 @@ static void signal_handler(int signum)
 	}
 }
 
-static int init_sighandler(void)
+static int init_signalfd(void)
 {
-	struct sigaction act;
+	sigset_t mask;
+	int sigfd;
 
-	bzero(&act, sizeof(struct sigaction));
-	act.sa_handler = signal_handler;
-	sigaction(SIGWINCH, &act, NULL);
-	sigaction(SIGINT, &act, NULL);
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGWINCH);
+	sigaddset(&mask, SIGINT);
+	sigprocmask(SIG_BLOCK, &mask, NULL);
 
-	return 0;
+	sigfd = signalfd(-1, &mask, SFD_NONBLOCK);
+	if (sigfd < 0) {
+		fprintf(stderr, "signalfd() failed: %s\n",
+			strerror(errno));
+		exit(1);
+	}
+
+	return sigfd;
 }
 
 static void read_commit(void)
@@ -1158,6 +1166,10 @@ static void long_run_command_compl_visit_root(bool stopped)
 end:
 	orig_before_visit_root = NULL;
 	memset(bottom_message, 0, bottom_message_size);
+
+	long_run_command = NULL;
+	long_run_command_compl = NULL;
+	state_long_run = LONG_RUN_DEFAULT;
 }
 
 static int show_root(char cmd)
@@ -1175,8 +1187,13 @@ static int show_root(char cmd)
 	}
 
 	orig_before_visit_root = current;
+
+	assert(!long_run_command);
+	assert(!long_run_command_compl);
 	long_run_command = long_run_command_visit_root;
 	long_run_command_compl = long_run_command_compl_visit_root;
+
+	assert(state_long_run == LONG_RUN_DEFAULT);
 	state_long_run = LONG_RUN_RUNNING;
 
 	bmprintf("visiting root commit...");
@@ -1291,6 +1308,8 @@ static int match_commit_regex(struct commit *c, int direction, int prog)
 	struct commit_cached *cached = get_cached(c);
 
 	if (prog) {
+		/* exclude current line */
+
 		if (direction) {
 			if (cached->nr_lines <= i - 1)
 				return 0;
@@ -1357,72 +1376,7 @@ static int match_commit(struct commit *c, int direction, int prog)
 	}
 }
 
-static int do_search(int direction, int global, int prog)
-{
-	int result;
-	struct commit *p;
-
-	assert(!searching);
-	searching = 1;
-
-	result = match_commit(current, direction, prog);
-	if (result || !global)
-		goto no_match;
-
-	if (direction) {
-		if (current == range_begin)
-			goto no_match;
-
-		if (!current->prev)
-			read_commit();
-
-		if (current->prev)
-			p = current->prev;
-		else
-			goto no_match;
-	} else {
-		if (current == range_end)
-			goto no_match;
-
-		if (current->next)
-			p = current->next;
-		else
-			goto no_match;
-	}
-
-	do {
-		if (direction)
-			p->head_line = 0;
-		else {
-			struct commit_cached *cached = get_cached(p);
-			p->head_line = cached->nr_lines - 1;
-		}
-
-		result = match_commit(p, direction, prog);
-		if (result)
-			goto matched;
-
-		if (p == range_begin || p == range_end)
-			goto no_match;
-
-		if (direction && !p->prev)
-			read_commit();
-	} while (searching && (direction ? (p = p->prev) : (p = p->next)));
-
-	goto no_match;
-
-matched:
-	current = p;
-	if (current_search_type == SEARCH_TYPE_FTS)
-		current->head_line = 0;
-
-no_match:
-	searching = 0;
-
-	return result;
-}
-
-static int current_direction, current_global;
+static int current_direction, current_global, current_prog;
 
 #define update_query_bm()	do {					\
 		bmprintf("%s %s search (filter: %s, type: %s): %s",	\
@@ -1434,6 +1388,141 @@ static int current_direction, current_global;
 			query);						\
 									\
 	} while (0)
+
+static bool search_found;
+static struct commit *orig_before_do_search;
+static void long_run_command_compl_do_search(bool stopped)
+{
+	if (search_found)
+		goto end;
+
+	if (!stopped) {
+		if (!search_found)
+			bmprintf("not found: %s", query);
+
+		goto restore;
+	}
+
+	bmprintf("search stopped");
+
+restore:
+	current = orig_before_do_search;
+
+end:
+	search_found = false;
+	orig_before_do_search = NULL;
+}
+
+static int long_run_command_do_search_call_count;
+
+static int long_run_command_do_search(void)
+{
+	int result = 0;
+
+	long_run_command_do_search_call_count++;
+
+	if (1 < long_run_command_do_search_call_count) {
+		if (current_direction)
+			current->head_line = 0;
+		else {
+			struct commit_cached *cached = get_cached(current);
+			current->head_line = cached->nr_lines - 1;
+		}
+	}
+
+	result = match_commit(current, current_direction,
+			long_run_command_do_search_call_count == 1 ? current_prog : 0);
+	if (result)
+		goto match;
+
+	if (current_direction) {
+		if (current == range_begin)
+			goto not_found;
+
+		if (!current->prev)
+			read_commit();
+
+		if (current->prev)
+			current = current->prev;
+		else
+			goto not_found;
+	} else {
+		if (current == range_end)
+			goto not_found;
+
+		if (current->next)
+			current = current->next;
+		else
+			goto not_found;
+	}
+
+	return 0;
+
+match:
+	if (current_search_type == SEARCH_TYPE_FTS)
+		current->head_line = 0;
+
+	search_found = true;
+
+	return 1;
+
+not_found:
+	bmprintf("not found: %s", query);
+	search_found = false;
+
+	return 1;
+}
+
+static int do_search(int direction, int global, int prog)
+{
+	int result;
+
+	result = match_commit(current, direction, prog);
+	if (!global)
+		return 0;
+
+	if (result)
+		return 1;
+
+	orig_before_do_search = current;
+
+	if (current_direction) {
+		if (current == range_begin)
+			return 0;
+
+		if (!current->prev)
+			read_commit();
+
+		if (current->prev)
+			current = current->prev;
+		else
+			return 0;
+	} else {
+		if (current == range_end)
+			return 0;
+
+		if (current->next)
+			current = current->next;
+		else
+			return 0;
+	}
+
+	current_direction = direction;
+	current_global = global;
+	current_prog = prog;
+
+	long_run_command_do_search_call_count = 0;
+
+	assert(!long_run_command);
+	assert(!long_run_command_compl);
+	long_run_command = long_run_command_do_search;
+	long_run_command_compl = long_run_command_compl_do_search;
+
+	assert(state_long_run == LONG_RUN_DEFAULT);
+	state_long_run = LONG_RUN_RUNNING;
+
+	return -1;
+}
 
 static struct {
 	struct commit *commit;
@@ -1538,10 +1627,21 @@ static int _search(int key, int direction, int global)
 			assert(current_search_type == SEARCH_TYPE_FTS);
 		}
 
-		if (!do_search(direction, global, 0))
+		int result = do_search(direction, global, 0);
+		switch (result) {
+		case 0:
 			bmprintf("not found: %s", query);
-		else
+			break;
+		case 1:
 			update_query_bm();
+			break;
+		case -1:	/* do nothing, continue */
+			assert(state_long_run == LONG_RUN_RUNNING);
+			break;
+		default:
+			die("invalid return value from do_search(): %d\n", result);
+			break;
+		}
 	}
 
 	return 1;
@@ -1581,9 +1681,9 @@ static int search_progress(char cmd)
 	if (state != STATE_SEARCHING_QUERY)
 		return 0;
 
-	if (!do_search(cmd == 'n' ?
-			current_direction : !current_direction,
-			current_global, 1))
+	assert(cmd == 'n' || cmd == 'p');
+
+	if (!do_search(cmd == 'n' ? 1 : 0, current_global, 1))
 		bmprintf("not found: %s", query);
 	else
 		update_query_bm();
@@ -2190,8 +2290,9 @@ static void exit_handler(void)
 
 int main(void)
 {
-	int i;
+	int i, sigfd;
 	char cmd;
+	struct pollfd pfds[2];
 
 #ifdef GIT_LESS_DEBUG
 
@@ -2213,8 +2314,16 @@ int main(void)
 
 	atexit(exit_handler);
 
+	sigfd = init_signalfd();
 	init_tty();
-	init_sighandler();
+
+	memset(pfds, 0, sizeof(pfds));
+
+	pfds[0].fd = sigfd;
+	pfds[0].events = POLLIN;
+
+	pfds[1].fd = tty_fd;
+	pfds[1].events = POLLIN;
 
 	read_commit();
 
@@ -2243,7 +2352,22 @@ int main(void)
 			= search_direction_ops[i].op;
 
 	while (running) {
-		int ret = 0;
+		int ret = 0, pret;
+
+		pret = poll(pfds, 2, state_long_run == LONG_RUN_RUNNING ? 0 : -1);
+		if (pret < 0)
+			die("poll() failed");
+
+		if (pfds[0].revents & POLLIN) {
+			struct signalfd_siginfo siginfo;
+			int rbytes;
+
+			rbytes = read(pfds[0].fd, &siginfo, sizeof(siginfo));
+			if (rbytes != sizeof(siginfo))
+				die("reading siginfo failed\n");
+
+			signal_handler(siginfo.ssi_signo);
+		}
 
 		if (state_long_run != LONG_RUN_DEFAULT) {
 			assert(long_run_command);
@@ -2256,12 +2380,15 @@ int main(void)
 					goto long_run_end;
 				}
 
-				break;
+				continue;
 			case LONG_RUN_STOPPED:
 				long_run_command_compl(true);
 
 			long_run_end:
 				state_long_run = LONG_RUN_DEFAULT;
+				long_run_command = NULL;
+				long_run_command_compl = NULL;
+
 				ret = 1;
 
 				break;
@@ -2269,7 +2396,9 @@ int main(void)
 				die("unknown state_long_run: %d", state_long_run);
 				break;
 			}
-		} else {
+		}
+
+		if (pfds[1].revents & POLLIN) {
 			ret = read(tty_fd, &cmd, 1);
 			if (ret == -1 && errno == EINTR) {
 				if (!running)
@@ -2377,6 +2506,7 @@ int main(void)
 				break;
 			}
 		}
+
 		if (ret)
 			update_terminal();
 	}
