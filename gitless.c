@@ -462,6 +462,9 @@ static void init_commit_lines(struct commit *c)
 		c->commit_log[j] = copied;
 	}
 
+#define SQLITE3_QUERY_LEN (1024 * 1024)
+
+#if 0
 	/* insert commit log to sqlite3 for FTS */
 	bool cb_called = false;
 	int row_chk_cb(void *called, int nr_results, char **columns, char **column_names)
@@ -470,7 +473,6 @@ static void init_commit_lines(struct commit *c)
 		return 0;
 	}
 
-#define SQLITE3_QUERY_LEN (1024 * 1024)
 	char select_query[SQLITE3_QUERY_LEN];
 	snprintf(select_query, SQLITE3_QUERY_LEN,
 		"select * from commit_log where name =\"%s\"",
@@ -501,6 +503,7 @@ static void init_commit_lines(struct commit *c)
 	}
 	snprintf(p, SQLITE3_QUERY_LEN, "')");
 	sqlite3_exec(sqlite3_db, insert_query, NULL, NULL, NULL);
+#endif
 }
 
 static struct commit *size_order_head;
