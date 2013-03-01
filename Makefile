@@ -9,7 +9,7 @@ CC = gcc
 default: gitless
 
 gitless: $(OBJS) default_cmd.def
-	$(CC) -o gitless $(OBJS) -lncurses -lsqlite3
+	$(CC) -o gitless $(OBJS) -lncurses -lsqlite3 -lX11 # -lXmu
 
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@
