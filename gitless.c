@@ -2299,6 +2299,91 @@ static int yank(char cmd)
 	if (clipboard_pid)
 		kill(clipboard_pid, SIGKILL);
 
+	char yank_target;
+	move(row, 0);
+	printw("yank what? c (commit ID), e (entire with editor) :");
+	refresh();
+
+	int ret = read(tty_fd, &yank_target, 1);
+	if (ret != 1)
+		die("read() failed\n");
+	if (yank_target != 'c' || yank_target != 'e') {
+	}
+
+	char *copy_buf;
+	int copy_buf_len;
+
+	char *copy_with_editor(struct commit *c, int *buf_len)
+	{
+		struct commit_cached *cached = get_cached(c);
+		char tmp_path[PATH_MAX];
+
+		strcpy(tmp_path, "/tmp/gitless-yank-XXXXXX");
+		mkstemp(tmp_path);
+
+		int tmp_fd = open(tmp_path, O_WRONLY);
+		if (tmp_fd < 0)
+			die("open() failed\n");
+
+		int wbytes = 0;
+		do {
+			int wret = write(tmp_fd, cached->text + wbytes, cached->text_size - wbytes);
+			if (wret < 0)
+				die("write() failed\n");
+			wbytes += wret;
+		} while (wbytes < cached->text_size);
+		close(tmp_fd);
+
+		char *env_editor = getenv("EDITOR");
+		int editor_pid = fork();
+		switch (editor_pid) {
+		case 0:
+			execlp(env_editor, env_editor, tmp_path, NULL);
+			break;
+		case -1:
+			die("fork() failed\n");
+			break;
+		default:
+			waitpid(editor_pid, NULL, 0);
+			break;
+		}
+
+		tmp_fd = open(tmp_path, O_RDONLY);
+		struct stat tmp_stat;
+
+		memset(&tmp_stat, 0, sizeof(tmp_stat));
+		ret = fstat(tmp_fd, &tmp_stat);
+		if (ret < 0)
+			die("fstat() failed\n");
+
+		char *ret = xalloc(tmp_stat.st_size);
+		int rbytes = 0;
+		do {
+			int rret = read(tmp_fd, ret + rbytes, tmp_stat.st_size - rbytes);
+			if (rret < 0)
+				die("read() failed\n");
+			rbytes += rret;
+		} while (rbytes < tmp_stat.st_size);
+		close(tmp_fd);
+		unlink(tmp_path);
+
+		*buf_len = tmp_stat.st_size;
+		return ret;
+	}
+
+	switch (yank_target) {
+	case 'c':
+		copy_buf = strdup(current->commit_id);
+		copy_buf_len = 41;
+		break;
+	case 'e':
+		copy_buf = copy_with_editor(current, &copy_buf_len);
+		break;
+	default:
+		bmprintf("unknown yank target: %c\n", yank_target);
+		return 1;
+	}
+
 	clipboard_pid = fork();
 	switch (clipboard_pid) {
 	case 0:
@@ -2307,6 +2392,7 @@ static int yank(char cmd)
 		die("fork() failed\n");
 		break;
 	default:
+		free(copy_buf);
 		return 1;
 	}
 
@@ -2329,7 +2415,7 @@ static int yank(char cmd)
 		XEvent evt;
 
 		XNextEvent(dpy, &evt);
-		finished = xcin(dpy, &cwin, evt, &pty, XA_PRIMARY, current->commit_id, 41, &sel_pos, &context);
+		finished = xcin(dpy, &cwin, evt, &pty, XA_PRIMARY, copy_buf, copy_buf_len, &sel_pos, &context);
 		if (finished)
 			break;
 	}
