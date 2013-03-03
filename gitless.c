@@ -2325,19 +2325,15 @@ static int yank(char cmd)
 		unsigned long sel_pos = 0;
 		Window cwin;
 		Atom pty;
-	    int finished;
-	    XEvent evt;
+		int finished;
+		XEvent evt;
 
-	    dbgprintf("xevent loop, %s, pid: %d\n", current->commit_id, clipboard_pid);
-	    XNextEvent(dpy, &evt);
-	    dbgprintf("after XNEXTEVENT\n");
-	    finished = xcin(dpy, &cwin, evt, &pty, XA_PRIMARY, current->commit_id, 41, &sel_pos, &context);
-	    dbgprintf("finished? %d\n", finished);
-	    if (finished)
-	    	    break;
+		XNextEvent(dpy, &evt);
+		finished = xcin(dpy, &cwin, evt, &pty, XA_PRIMARY, current->commit_id, 41, &sel_pos, &context);
+		if (finished)
+			break;
 	}
 
-	dbgprintf("exiting...\n");
 	exit(0);
 }
 
