@@ -416,13 +416,6 @@ xcin(Display * dpy,
     return (0);
 }
 
-static Display *dpy;
-
-static void init_xclipboard(void)
-{
-	dpy = XOpenDisplay("");
-}
-
 static sqlite3 *sqlite3_db;
 
 static void init_sqlite3(void)
@@ -2300,20 +2293,14 @@ static int stop_search(char cmd)
 	return 1;
 }
 
+static int clipboard_pid;
 static int yank(char cmd)
 {
-	static int pid;
-	static Window win;
+	if (clipboard_pid)
+		kill(clipboard_pid, SIGKILL);
 
-	/* Create a window to trap events */
-	if (!win)
-		win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0, 0, 0);
-
-	if (pid)
-		kill(pid, SIGKILL);
-
-	pid = fork();
-	switch (pid) {
+	clipboard_pid = fork();
+	switch (clipboard_pid) {
 	case 0:
 		break;
 	case -1:
@@ -2323,6 +2310,10 @@ static int yank(char cmd)
 		return 1;
 	}
 
+	Display *dpy = XOpenDisplay("");
+	/* Create a window to trap events */
+	Window win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0, 0, 0);
+
 	/* get events about property changes */
 	XSelectInput(dpy, win, PropertyChangeMask);
 	XSetSelectionOwner(dpy, XA_PRIMARY, win, CurrentTime);
@@ -2330,20 +2321,20 @@ static int yank(char cmd)
 	daemon(0, 0);
 	/* wait for a SelectionRequest event */
 	while (1) {
-	    static unsigned int context = XCLIB_XCIN_NONE;
-	    static unsigned long sel_pos = 0;
-	    static Window cwin;
-	    static Atom pty;
+		unsigned int context = XCLIB_XCIN_NONE;
+		unsigned long sel_pos = 0;
+		Window cwin;
+		Atom pty;
 	    int finished;
 	    XEvent evt;
 
-	    dbgprintf("xevent loop, %s, pid: %d\n", current->commit_id, pid);
+	    dbgprintf("xevent loop, %s, pid: %d\n", current->commit_id, clipboard_pid);
 	    XNextEvent(dpy, &evt);
-
+	    dbgprintf("after XNEXTEVENT\n");
 	    finished = xcin(dpy, &cwin, evt, &pty, XA_PRIMARY, current->commit_id, 41, &sel_pos, &context);
-	    /* dbgprintf("finished: %d\n", finished); */
-	    /* if (finished) */
-	    /* 	    break; */
+	    dbgprintf("finished? %d\n", finished);
+	    if (finished)
+	    	    break;
 	}
 
 	dbgprintf("exiting...\n");
@@ -2509,6 +2500,9 @@ static void exit_handler(void)
 	/* unlink(DEBUG_FILE_NAME); */
 #endif
 
+	if (clipboard_pid)
+		kill(clipboard_pid, SIGKILL);
+
 	endwin();
 
 	fprintf(stderr, dying_msg);
@@ -2542,7 +2536,6 @@ int main(void)
 
 	sigfd = init_signalfd();
 	init_tty();
-	init_xclipboard();
 
 	memset(pfds, 0, sizeof(pfds));
 
