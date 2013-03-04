@@ -46,6 +46,8 @@
 
 #include <sqlite3.h>
 
+#define USE_XCLIP 1
+
 #define GIT_LESS_DEBUG
 #define DEBUG_FILE_NAME "/tmp/git-less-debug"
 
@@ -2384,6 +2386,48 @@ static int yank(char cmd)
 		return 1;
 	}
 
+#if USE_XCLIP
+	void yank_with_xclip(char *buf, int buf_len, const char *board) {
+		int pipefds[2];
+
+		if (pipe(pipefds))
+			die("pipe() failed\n");
+
+		int xclip_pid = fork();
+		switch (xclip_pid) {
+		case 0:
+			break;
+		case -1:
+			die("fork() failed\n");
+			break;
+		default:
+			close(pipefds[0]);
+
+			int wbytes = 0;
+			do {
+				int wret = write(pipefds[1], buf + wbytes, buf_len - wbytes);
+				if (wret < 0)
+					die("write() failed\n");
+				wbytes += wret;
+			} while (wbytes < buf_len);
+			close(pipefds[1]);
+
+			return;
+		}
+
+		close(0);
+		dup(pipefds[0]);
+		close(pipefds[1]);
+		if (execlp("xclip", "xclip", "-i", "-selection", board, NULL))
+			die("execlp() failed\n");
+	}
+
+	yank_with_xclip(copy_buf, copy_buf_len, "CLIPBOARD");
+	yank_with_xclip(copy_buf, copy_buf_len, "PRIMARY");
+
+	free(copy_buf);
+
+#else
 	clipboard_pid = fork();
 	switch (clipboard_pid) {
 	case 0:
@@ -2402,7 +2446,7 @@ static int yank(char cmd)
 
 	/* get events about property changes */
 	XSelectInput(dpy, win, PropertyChangeMask);
-	XSetSelectionOwner(dpy, XA_PRIMARY, win, CurrentTime);
+	XSetSelectionOwner(dpy, XA_CLIPBOARD(dpy), win, CurrentTime);
 
 	daemon(0, 0);
 	/* wait for a SelectionRequest event */
@@ -2415,12 +2459,13 @@ static int yank(char cmd)
 		XEvent evt;
 
 		XNextEvent(dpy, &evt);
-		finished = xcin(dpy, &cwin, evt, &pty, XA_PRIMARY, copy_buf, copy_buf_len, &sel_pos, &context);
+		finished = xcin(dpy, &cwin, evt, &pty, XA_CLIPBOARD(dpy), copy_buf, copy_buf_len, &sel_pos, &context);
 		if (finished)
 			break;
 	}
 
 	exit(0);
+#endif
 }
 
 static int help(char cmd)
