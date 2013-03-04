@@ -56,14 +56,60 @@ extern int errno;
 static int running = 1;
 
 static char dying_msg[1024];
+
+enum commit_cached_state {
+	CACHED_STATE_PURGED,
+	CACHED_STATE_FILLED,
+};
+
+struct commit_cached {
+	enum commit_cached_state state;
+
+	char *text;
+	int text_size;
+
+	char **lines;
+	int nr_lines, lines_size;
+};
+
+struct commit {
+	struct commit_cached cached;
+
+	int head_line;
+
+	/*
+	 * caution:
+	 * prev means previous commit of the commit object,
+	 * next means next commit of the commit object.
+	 */
+	struct commit *prev, *next;
+
+	/* size_next points next commit with smaller text size */
+	struct commit *size_next;
+	bool size_order_initialized;
+
+	char *commit_id, *summary;
+
+	char **file_list;
+	int nr_file_list, file_list_size;
+
+	char **commit_log;
+	int commit_log_lines;
+};
+
+static struct commit *current;
 #define die(fmt, arg...)						\
 	do {								\
-		int ret;						\
-		ret = sprintf(dying_msg,				\
+		int len;						\
+		len = sprintf(dying_msg,				\
 				"line %d: fatal error, " fmt "\n",	\
 				__LINE__, ##arg);			\
-		sprintf(dying_msg + ret, "errno: %s\n",			\
+		len += sprintf(dying_msg + len, "errno: %s\n",		\
 			strerror(errno));				\
+		if (current)						\
+			len += sprintf(dying_msg + len,			\
+				"current commit: %s\n",			\
+				current->commit_id);			\
 		exit(1);						\
 	} while (0)
 
@@ -455,46 +501,6 @@ static void init_sqlite3(void)
 	}
 }
 
-enum commit_cached_state {
-	CACHED_STATE_PURGED,
-	CACHED_STATE_FILLED,
-};
-
-struct commit_cached {
-	enum commit_cached_state state;
-
-	char *text;
-	int text_size;
-
-	char **lines;
-	int nr_lines, lines_size;
-};
-
-struct commit {
-	struct commit_cached cached;
-
-	int head_line;
-
-	/*
-	 * caution:
-	 * prev means previous commit of the commit object,
-	 * next means next commit of the commit object.
-	 */
-	struct commit *prev, *next;
-
-	/* size_next points next commit with smaller text size */
-	struct commit *size_next;
-	bool size_order_initialized;
-
-	char *commit_id, *summary;
-
-	char **file_list;
-	int nr_file_list, file_list_size;
-
-	char **commit_log;
-	int commit_log_lines;
-};
-
 #define raw_get_cached(c) (&c->cached) /* simply get pointer */
 
 static void init_commit_lines(struct commit *c)
@@ -850,7 +856,7 @@ static struct commit_cached *get_cached(struct commit *c)
 /* head: HEAD, root: root of the commit tree */
 static struct commit *head, *root;
 /* current: current displaying commit, tail: tail of the read commits */
-static struct commit *current, *tail;
+static struct commit *tail;
 static struct commit *range_begin, *range_end;
 
 static regex_t *re_compiled;
