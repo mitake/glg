@@ -2472,6 +2472,8 @@ static int yank(char cmd)
 
 	exit(0);
 #endif
+
+	return 1;
 }
 
 static int help(char cmd)
