@@ -2079,6 +2079,7 @@ end_read_prefix:
 		snprintf(subject_prefix, 64, "--subject-prefix=%s", prefix);
 		execvp_args[execvp_args_i++] = subject_prefix;
 	}
+	execvp_args[execvp_args_i++] = "-C";
 	execvp_args[execvp_args_i++] = range;
 	execvp_args[execvp_args_i++] = NULL;
 
