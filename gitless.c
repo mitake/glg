@@ -38,13 +38,7 @@
 #include <regex.h>
 #include <ncurses.h>
 
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xmu/Atoms.h>
-
 #include <stdbool.h>
-
-#define USE_XCLIP 1
 
 #define GIT_LESS_DEBUG
 #define DEBUG_FILE_NAME "/tmp/git-less-debug"
@@ -290,176 +284,6 @@ static void init_tty(void)
 	init_pair(COLORING_COMMIT, COLOR_YELLOW, COLOR_BLACK);
 
 	update_row_col();
-}
-
-/* xcin() contexts */
-#define XCLIB_XCIN_NONE		0
-#define XCLIB_XCIN_SELREQ	1
-#define XCLIB_XCIN_INCR		2
-int
-xcin(Display * dpy,
-     Window * win,
-     XEvent evt,
-     Atom * pty, Atom target, unsigned char *txt, unsigned long len, unsigned long *pos,
-     unsigned int *context)
-{
-    unsigned long chunk_len;	/* length of current chunk (for incr
-				 * transfers only)
-				 */
-    XEvent res;			/* response to event */
-    static Atom inc;
-    static Atom targets;
-    static long chunk_size;
-
-    if (!targets) {
-	targets = XInternAtom(dpy, "TARGETS", False);
-    }
-
-    if (!inc) {
-	inc = XInternAtom(dpy, "INCR", False);
-    }
-
-    /* We consider selections larger than a quarter of the maximum
-       request size to be "large". See ICCCM section 2.5 */
-    if (!chunk_size) {
-	chunk_size = XExtendedMaxRequestSize(dpy) / 4;
-	if (!chunk_size) {
-	    chunk_size = XMaxRequestSize(dpy) / 4;
-	}
-    }
-
-    switch (*context) {
-    case XCLIB_XCIN_NONE:
-	if (evt.type != SelectionRequest)
-	    return (0);
-
-	/* set the window and property that is being used */
-	*win = evt.xselectionrequest.requestor;
-	*pty = evt.xselectionrequest.property;
-
-	/* reset position to 0 */
-	*pos = 0;
-
-	/* put the data into an property */
-	if (evt.xselectionrequest.target == targets) {
-	    Atom types[2] = { targets, target };
-
-	    /* send data all at once (not using INCR) */
-	    XChangeProperty(dpy,
-			    *win,
-			    *pty,
-			    XA_ATOM,
-			    32, PropModeReplace, (unsigned char *) types,
-			    (int) (sizeof(types) / sizeof(Atom))
-		);
-	}
-	else if (len > chunk_size) {
-	    /* send INCR response */
-	    XChangeProperty(dpy, *win, *pty, inc, 32, PropModeReplace, 0, 0);
-
-	    /* With the INCR mechanism, we need to know
-	     * when the requestor window changes (deletes)
-	     * its properties
-	     */
-	    XSelectInput(dpy, *win, PropertyChangeMask);
-
-	    *context = XCLIB_XCIN_INCR;
-	}
-	else {
-	    /* send data all at once (not using INCR) */
-	    XChangeProperty(dpy,
-			    *win,
-			    *pty, target, 8, PropModeReplace, (unsigned char *) txt, (int) len);
-	}
-
-	/* Perhaps FIXME: According to ICCCM section 2.5, we should
-	   confirm that XChangeProperty succeeded without any Alloc
-	   errors before replying with SelectionNotify. However, doing
-	   so would require an error handler which modifies a global
-	   variable, plus doing XSync after each XChangeProperty. */
-
-	/* set values for the response event */
-	res.xselection.property = *pty;
-	res.xselection.type = SelectionNotify;
-	res.xselection.display = evt.xselectionrequest.display;
-	res.xselection.requestor = *win;
-	res.xselection.selection = evt.xselectionrequest.selection;
-	res.xselection.target = evt.xselectionrequest.target;
-	res.xselection.time = evt.xselectionrequest.time;
-
-	/* send the response event */
-	XSendEvent(dpy, evt.xselectionrequest.requestor, 0, 0, &res);
-	XFlush(dpy);
-
-	/* if len < chunk_size, then the data was sent all at
-	 * once and the transfer is now complete, return 1
-	 */
-	if (len > chunk_size)
-	    return (0);
-	else
-	    return (1);
-
-	break;
-
-    case XCLIB_XCIN_INCR:
-	/* length of current chunk */
-
-	/* ignore non-property events */
-	if (evt.type != PropertyNotify)
-	    return (0);
-
-	/* ignore the event unless it's to report that the
-	 * property has been deleted
-	 */
-	if (evt.xproperty.state != PropertyDelete)
-	    return (0);
-
-	/* set the chunk length to the maximum size */
-	chunk_len = chunk_size;
-
-	/* if a chunk length of maximum size would extend
-	 * beyond the end ot txt, set the length to be the
-	 * remaining length of txt
-	 */
-	if ((*pos + chunk_len) > len)
-	    chunk_len = len - *pos;
-
-	/* if the start of the chunk is beyond the end of txt,
-	 * then we've already sent all the data, so set the
-	 * length to be zero
-	 */
-	if (*pos > len)
-	    chunk_len = 0;
-
-	if (chunk_len) {
-	    /* put the chunk into the property */
-	    XChangeProperty(dpy,
-			    *win, *pty, target, 8, PropModeReplace, &txt[*pos], (int) chunk_len);
-	}
-	else {
-	    /* make an empty property to show we've
-	     * finished the transfer
-	     */
-	    XChangeProperty(dpy, *win, *pty, target, 8, PropModeReplace, 0, 0);
-	}
-	XFlush(dpy);
-
-	/* all data has been sent, break out of the loop */
-	if (!chunk_len)
-	    *context = XCLIB_XCIN_NONE;
-
-	*pos += chunk_size;
-
-	/* if chunk_len == 0, we just finished the transfer,
-	 * return 1
-	 */
-	if (chunk_len > 0)
-	    return (0);
-	else
-	    return (1);
-	break;
-    }
-    return (0);
 }
 
 #define raw_get_cached(c) (&c->cached) /* simply get pointer */
@@ -2274,7 +2098,6 @@ static int yank(char cmd)
 		return 1;
 	}
 
-#if USE_XCLIP
 	void yank_with_xclip(char *buf, int buf_len, const char *board) {
 		int pipefds[2];
 
@@ -2314,46 +2137,6 @@ static int yank(char cmd)
 	yank_with_xclip(copy_buf, copy_buf_len, "PRIMARY");
 
 	free(copy_buf);
-
-#else
-	clipboard_pid = fork();
-	switch (clipboard_pid) {
-	case 0:
-		break;
-	case -1:
-		die("fork() failed\n");
-		break;
-	default:
-		free(copy_buf);
-		return 1;
-	}
-
-	Display *dpy = XOpenDisplay("");
-	/* Create a window to trap events */
-	Window win = XCreateSimpleWindow(dpy, DefaultRootWindow(dpy), 0, 0, 1, 1, 0, 0, 0);
-
-	/* get events about property changes */
-	XSelectInput(dpy, win, PropertyChangeMask);
-	XSetSelectionOwner(dpy, XA_CLIPBOARD(dpy), win, CurrentTime);
-
-	daemon(0, 0);
-	/* wait for a SelectionRequest event */
-	while (1) {
-		unsigned int context = XCLIB_XCIN_NONE;
-		unsigned long sel_pos = 0;
-		Window cwin;
-		Atom pty;
-		int finished;
-		XEvent evt;
-
-		XNextEvent(dpy, &evt);
-		finished = xcin(dpy, &cwin, evt, &pty, XA_CLIPBOARD(dpy), copy_buf, copy_buf_len, &sel_pos, &context);
-		if (finished)
-			break;
-	}
-
-	exit(0);
-#endif
 
 	return 1;
 }
