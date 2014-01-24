@@ -383,8 +383,9 @@ static void init_commit_lines(struct commit *c)
 		c->file_list[c->nr_file_list++] = copied;
 	}
 
+	int i = 0;
 	int commit_log_begin_idx = -1, commit_log_end_idx = -1;
-	for (int state = 0, i = 0; i < cached->nr_lines; i++) {
+	for (int state = 0; i < cached->nr_lines; i++) {
 		char *l = cached->lines[i];
 
 		switch (state) {
@@ -410,6 +411,9 @@ static void init_commit_lines(struct commit *c)
 			break;
 		}
 	}
+
+	if (commit_log_end_idx == -1)
+		commit_log_end_idx = i - 1;
 
 	assert(commit_log_begin_idx != -1 && commit_log_end_idx != -1);
 
