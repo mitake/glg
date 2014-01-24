@@ -44,8 +44,6 @@
 
 #include <stdbool.h>
 
-#include <sqlite3.h>
-
 #define USE_XCLIP 1
 
 #define GIT_LESS_DEBUG
@@ -464,43 +462,6 @@ xcin(Display * dpy,
     return (0);
 }
 
-static sqlite3 *sqlite3_db;
-
-static void init_sqlite3(void)
-{
-	char sqlite3_file[PATH_MAX];
-	const char *sqlite3_file_rel = "/.git/gitless.sqlite3";
-
-	memset(sqlite3_file, 0, PATH_MAX);
-	getcwd(sqlite3_file, PATH_MAX);
-	strcpy(sqlite3_file + strlen(sqlite3_file), sqlite3_file_rel);
-
-	int ret;
-	ret = sqlite3_open(sqlite3_file, &sqlite3_db);
-	if (ret != SQLITE_OK)
-		die("sqlite3_open() failed\n");
-
-	bool cb_called = false;
-	int table_chk_cb(void *called, int nr_results, char **columns, char **column_names)
-	{
-		*(bool *)called = true;
-		return 0;
-	}
-
-	sqlite3_exec(sqlite3_db,
-		"select * from sqlite_master where name =\"commit_log\"",
-		table_chk_cb, &cb_called, NULL);
-
-	if (!cb_called) {
-		ret = sqlite3_exec(sqlite3_db,
-				"create virtual table commit_log"
-				" using fts4(id char(40), log text)",
-				NULL, NULL, NULL);
-		if (ret != SQLITE_OK)
-			die("creating table for FTS failed\n");
-	}
-}
-
 #define raw_get_cached(c) (&c->cached) /* simply get pointer */
 
 static void init_commit_lines(struct commit *c)
@@ -643,49 +604,6 @@ static void init_commit_lines(struct commit *c)
 
 		c->commit_log[j] = copied;
 	}
-
-#define SQLITE3_QUERY_LEN (1024 * 1024)
-
-#if 0
-	/* insert commit log to sqlite3 for FTS */
-	bool cb_called = false;
-	int row_chk_cb(void *called, int nr_results, char **columns, char **column_names)
-	{
-		*(bool *)called = true;
-		return 0;
-	}
-
-	char select_query[SQLITE3_QUERY_LEN];
-	snprintf(select_query, SQLITE3_QUERY_LEN,
-		"select * from commit_log where name =\"%s\"",
-		c->commit_id);
-	sqlite3_exec(sqlite3_db, select_query, row_chk_cb, &cb_called, NULL);
-
-	if (cb_called)
-		/* we already inserted the commit */
-		return;
-
-	char insert_query[SQLITE3_QUERY_LEN];
-	snprintf(insert_query, SQLITE3_QUERY_LEN, "insert into commit_log values ('%s', '",
-		c->commit_id);
-	char *p = insert_query + strlen(insert_query);
-	for (int i = 0; i < c->commit_log_lines; i++) {
-		char *l = c->commit_log[i];
-		int len = strlen(l);
-
-		for (int j = 0; j < len; j++) {
-			if (l[j] == '\'')
-				continue;
-			if (l[j] == '"')
-				continue;
-
-			*p = l[j];
-			p++;
-		}
-	}
-	snprintf(p, SQLITE3_QUERY_LEN, "')");
-	sqlite3_exec(sqlite3_db, insert_query, NULL, NULL, NULL);
-#endif
 }
 
 static struct commit *size_order_head;
@@ -1525,40 +1443,9 @@ static int match_commit_regex(struct commit *c, int direction, int prog)
 	return 0;
 }
 
-static int match_commit_fts(struct commit *c)
-{
-	char fts_query[SQLITE3_QUERY_LEN];
-
-	get_cached(c);		/* dummy read for initializing sqlite3 table */
-
-	snprintf(fts_query, SQLITE3_QUERY_LEN,
-		"select * from commit_log where id=\"%s\" and log match \"%s\"",
-		c->commit_id, query);
-
-	int ret = 0;
-	
-	int match_cb(void *_ret, int nr_results, char **columns, char **column_names)
-	{
-		*(int *)_ret = 1;
-		return 0;
-	}
-
-	sqlite3_exec(sqlite3_db, fts_query, match_cb, &ret, NULL);
-
-	return ret;
-}
-
 static int match_commit(struct commit *c, int direction, int prog)
 {
-	if (current_search_type == SEARCH_TYPE_REGEX)
-		return match_commit_regex(c, direction, prog);
-	else {
-		assert(current_search_type == SEARCH_TYPE_FTS);
-		if (prog && c == current)
-			return 0;
-
-		return match_commit_fts(c);
-	}
+	return match_commit_regex(c, direction, prog);
 }
 
 static int current_direction, current_global;
@@ -2164,12 +2051,6 @@ static int show_changed_files(char cmd)
 	return 1;
 }
 
-static int fts_commit_log(char cmd)
-{
-	current_search_type = SEARCH_TYPE_FTS;
-	return search(1, 1);
-}
-
 static int quit(char cmd)
 {
 	running = 0;
@@ -2662,8 +2543,6 @@ int main(void)
 		die("failed fdopen() for debug_file");
 
 #endif
-
-	init_sqlite3();
 
 	bottom_message = xalloc(bottom_message_size);
 	match_array = xalloc(match_array_size * sizeof(regmatch_t));
