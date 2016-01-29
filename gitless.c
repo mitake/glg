@@ -1813,6 +1813,15 @@ static int git_rebase_i(void)
 	printf("executing git... good luck!\n");
 	fflush(stdout);
 
+	close(stdin_fd);
+	stdin_fd = open("/dev/tty", O_RDONLY);
+	if (stdin_fd != 0)
+		die("failed to open /dev/tty\n");
+
+	close(1);
+	int stdout_fd = open("/dev/tty", O_WRONLY);
+	if (stdout_fd != 1)
+		die("failed to open /dev/tty]n\n");
 	execlp("git", "git", "rebase", "-i", prev->commit_id, NULL);
 	die("execlp() failed\n");
 
