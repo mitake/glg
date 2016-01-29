@@ -2312,6 +2312,36 @@ static void exit_handler(void)
 	fprintf(stderr, dying_msg);
 }
 
+static void launch_git_log(void)
+{
+	int pipefds[2];
+	if (pipe(pipefds))
+		die("pipe() failed\n");
+
+	pid_t pid = fork();
+	switch (pid) {
+	case 0:
+		setsid();	/* for handling ^c correctly */
+
+		close(1);
+		dup(pipefds[1]);
+		close(pipefds[0]);
+
+		if (execlp("git", "git", "log", "--pretty=format:%H", NULL))
+			die("execlp() failed\n");
+
+		break;
+	case -1:
+		die("fork failed\n");
+		break;
+	default:
+		close(pipefds[1]);
+		close(0);
+		dup(pipefds[0]); /* connect git log to stdin */
+		break;
+	}
+}
+
 int main(void)
 {
 	int i, sigfd;
@@ -2330,6 +2360,8 @@ int main(void)
 		die("failed fdopen() for debug_file");
 
 #endif
+
+	launch_git_log();
 
 	bottom_message = xalloc(bottom_message_size);
 	match_array = xalloc(match_array_size * sizeof(regmatch_t));
