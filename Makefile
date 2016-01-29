@@ -9,7 +9,7 @@ CC = gcc
 default: glg
 
 glg: $(OBJS) default_cmd.def
-	$(CC) -o glg $(OBJS) -lncurses -lX11
+	$(CC) -o glg $(OBJS) -lncurses
 
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@
