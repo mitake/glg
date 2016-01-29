@@ -1,3 +1,0 @@
-#! /bin/bash
-
-setsid git log "--pretty=format:%H" | gitless

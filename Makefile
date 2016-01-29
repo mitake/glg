@@ -6,18 +6,16 @@ CFLAGS = -O2 -Wall -std=gnu99
 
 CC = gcc
 
-default: gitless
+default: glg
 
-gitless: $(OBJS) default_cmd.def
-	$(CC) -o gitless $(OBJS) -lncurses -lX11
+glg: $(OBJS) default_cmd.def
+	$(CC) -o glg $(OBJS) -lncurses -lX11
 
 %.o: %.c $(HDRS)
 	$(CC) -c $(CFLAGS) $< -o $@
 
-install: gitless
-	sudo cp gitless glg /usr/local/bin
-	sudo cp gco.py /usr/local/bin/gco
-	sudo chmod +x /usr/local/bin/gco
+install: glg
+	sudo cp glg /usr/local/bin
 
 cscope:
 	find . -name "*.[ch]" > cscope.files
