@@ -1,7 +1,7 @@
 /*
- * gitless - a specialized pager for git log
+ * glg - a specialized pager for git log
  *
- * Copyright (C) 2012 - 2013 Hitoshi Mitake <mitake.hitoshi@gmail.com>
+ * Copyright (C) 2012 - 2016 Hitoshi Mitake <mitake.hitoshi@gmail.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
