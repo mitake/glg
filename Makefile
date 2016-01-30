@@ -1,18 +1,18 @@
 
-OBJS = gitless.o
+OBJS = glg.o
 HDRS =
 
-CFLAGS = -O2 -Wall -std=gnu99
+CFLAGS = -O2 -Wall -std=c++11
 
-CC = gcc
+CPPC = clang++
 
 default: glg
 
 glg: $(OBJS) default_cmd.def
-	$(CC) -o glg $(OBJS) -lncurses
+	$(CPPC) -o glg $(OBJS) -lncurses
 
-%.o: %.c $(HDRS)
-	$(CC) -c $(CFLAGS) $< -o $@
+%.o: %.cc $(HDRS)
+	$(CPPC) -c $(CFLAGS) $< -o $@
 
 install: glg
 	sudo cp glg /usr/local/bin
