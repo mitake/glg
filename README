@@ -1,6 +1,0 @@
-
-gitless cannot be used with --color option of git-log
-
-todo:
-	sane color handling
-	command for yanking commit ID
