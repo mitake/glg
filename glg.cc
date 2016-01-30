@@ -492,10 +492,11 @@ static void text_alloc(struct commit *c)
 
   if (!size_order_head) {
     size_order_head = c;
-    goto end;
+    c->size_order_initialized = true;
+    return;
   }
 
-  struct commit *size_prev;
+  struct commit *size_prev = nullptr;
   for (struct commit *p = size_order_head; p; p = p->size_next) {
     struct commit_cached *pc = raw_get_cached(p);
 
