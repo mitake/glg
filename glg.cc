@@ -1159,33 +1159,33 @@ static int query_used;
 
 static bool (*match_filter)(char *);
 
-enum match_type {
-  MATCH_TYPE_DEFAULT,
-  MATCH_TYPE_MODIFIED,
-  MATCH_TYPE_AT,
-  MATCH_TYPE_COMMIT_MESSAGE,
-  MATCH_TYPE_FILE,
+enum class match_type {
+  DEFAULT,
+  MODIFIED,
+  AT,
+  COMMIT_MESSAGE,
+  FILE,
 };
 
-static enum match_type current_match_type = MATCH_TYPE_DEFAULT;
+static match_type current_match_type = match_type::DEFAULT;
 static char *current_match_type_str(void)
 {
   string ret;
 
   switch (current_match_type) {
-  case MATCH_TYPE_DEFAULT:
+  case match_type::DEFAULT:
     ret = "default";
     break;
-  case MATCH_TYPE_MODIFIED:
+  case match_type::MODIFIED:
     ret = "modified";
     break;
-  case MATCH_TYPE_AT:
+  case match_type::AT:
     ret = "at";
     break;
-  case MATCH_TYPE_COMMIT_MESSAGE:
+  case match_type::COMMIT_MESSAGE:
     ret = "commit";
     break;
-  case MATCH_TYPE_FILE:
+  case match_type::FILE:
     ret = "file";
     break;
   default:
@@ -1462,7 +1462,7 @@ static int _search(int key, int direction, int global)
   switch (state) {
   case STATE_DEFAULT:
   case STATE_SEARCHING_QUERY:
-    current_match_type = MATCH_TYPE_DEFAULT;
+    current_match_type = match_type::DEFAULT;
     match_filter = match_filter_default;
 
   case STATE_INPUT_SEARCH_DIRECTION:
@@ -2183,7 +2183,7 @@ static struct key_cmd valid_ops[] = {
 static int search_filter_modified_line(char cmd)
 {
   match_filter = match_filter_modified;
-  current_match_type = MATCH_TYPE_MODIFIED;
+  current_match_type = match_type::MODIFIED;
 
   if (state == STATE_INPUT_SEARCH_FILTER2) {
     state = STATE_INPUT_SEARCH_DIRECTION;
@@ -2201,7 +2201,7 @@ static int search_filter_modified_line(char cmd)
 static int search_filter_at_line(char cmd)
 {
   match_filter = match_filter_at;
-  current_match_type = MATCH_TYPE_AT;
+  current_match_type = match_type::AT;
 
   if (state == STATE_INPUT_SEARCH_FILTER2) {
     state = STATE_INPUT_SEARCH_DIRECTION;
@@ -2219,7 +2219,7 @@ static int search_filter_at_line(char cmd)
 static int search_filter_commit_message(char cmd)
 {
   match_filter = match_filter_commit_message;
-  current_match_type = MATCH_TYPE_COMMIT_MESSAGE;
+  current_match_type = match_type::COMMIT_MESSAGE;
 
   if (state == STATE_INPUT_SEARCH_FILTER2) {
     state = STATE_INPUT_SEARCH_DIRECTION;
@@ -2237,7 +2237,7 @@ static int search_filter_commit_message(char cmd)
 static int search_filter_file_line(char cmd)
 {
   match_filter = match_filter_file;
-  current_match_type = MATCH_TYPE_FILE;
+  current_match_type = match_type::FILE;
 
   if (state == STATE_INPUT_SEARCH_FILTER2) {
     state = STATE_INPUT_SEARCH_DIRECTION;
@@ -2255,7 +2255,7 @@ static int search_filter_file_line(char cmd)
 static int search_filter_cancel(char cmd)
 {
   match_filter = match_filter_default;
-  current_match_type = MATCH_TYPE_DEFAULT;
+  current_match_type = match_type::DEFAULT;
   state = STATE_DEFAULT;
 
   return 1;
@@ -2265,7 +2265,7 @@ static int search_filter_invalid(char cmd)
 {
   bmprintf("invalid search type: %c\n", cmd);
   match_filter = match_filter_default;
-  current_match_type = MATCH_TYPE_DEFAULT;
+  current_match_type = match_type::DEFAULT;
   state = STATE_DEFAULT;
 
   return 1;
@@ -2285,7 +2285,7 @@ static struct key_cmd search_filter_ops[] = {
 static int search_direction_cancel(char cmd)
 {
   match_filter = match_filter_default;
-  current_match_type = MATCH_TYPE_DEFAULT;
+  current_match_type = match_type::DEFAULT;
   state = STATE_DEFAULT;
 
   return 1;
