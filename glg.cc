@@ -202,11 +202,11 @@ static int (*long_run_command)(void);
  */
 static void (*long_run_command_compl)(bool stopped);
 
-enum search_type{
-  SEARCH_TYPE_REGEX,
-  SEARCH_TYPE_FTS,
+enum class search_type {
+  REGEX,
+  FTS,
 };
-static enum search_type current_search_type;
+static search_type current_search_type;
 
 #define BOTTOM_MESSAGE_INIT_SIZE 32
 static char *bottom_message;
@@ -670,7 +670,7 @@ static void update_terminal_default(void)
     coloring(first_char, 1);
 
     if (state == STATE_SEARCHING_QUERY) {
-      if (current_search_type == SEARCH_TYPE_REGEX) {
+      if (current_search_type == search_type::REGEX) {
 	int ret, mi, nli = ret_nl_index(line);
 	int rev = 0;
 
@@ -709,7 +709,7 @@ static void update_terminal_default(void)
       } else {
 	/* FIXME: disaster... */
 
-	assert(current_search_type == SEARCH_TYPE_FTS);
+	assert(current_search_type == search_type::FTS);
 
 	int nli = ret_nl_index(line);
 	for (int i = 0; i < nli; i++) {
@@ -1290,7 +1290,7 @@ static int current_direction, current_global;
 	     current_direction ? "forward" : "backward",	\
 	     current_global ? "global" : "local",		\
 	     current_match_type_str(),				\
-	     current_search_type == SEARCH_TYPE_REGEX ?		\
+	     current_search_type == search_type::REGEX ?		\
 	     "regex" : "FTS",					\
 	     query);						\
 								\
@@ -1326,7 +1326,7 @@ static int long_run_command_do_search(void)
 
   result = match_commit(current, current_direction, 0);
   if (result) {
-    if (current_search_type == SEARCH_TYPE_FTS)
+    if (current_search_type == search_type::FTS)
       current->head_line = 0;
 
     search_found = true;
@@ -1473,7 +1473,7 @@ static int _search(int key, int direction, int global)
 	     current_direction ? "forward" : "backward",
 	     current_global ? "global" : "local",
 	     current_match_type_str(),
-	     current_search_type == SEARCH_TYPE_REGEX ? "regex" : "FTS");
+	     current_search_type == search_type::REGEX ? "regex" : "FTS");
 
     state = STATE_INPUT_SEARCH_QUERY;
 
@@ -1493,7 +1493,7 @@ static int _search(int key, int direction, int global)
       orig_place.commit = current;
       orig_place.head_line = current->head_line;
 
-      if (current_search_type == SEARCH_TYPE_FTS)
+      if (current_search_type == search_type::FTS)
 	tokenize_query();
 
     } else {
@@ -1509,14 +1509,14 @@ static int _search(int key, int direction, int global)
   }
 
   if (state == STATE_SEARCHING_QUERY) {
-    if (current_search_type == SEARCH_TYPE_REGEX) {
+    if (current_search_type == search_type::REGEX) {
       if (re_compiled)
 	regfree(re_compiled);
       else
 	re_compiled = static_cast<regex_t *>(xalloc(sizeof(regex_t)));
       regcomp(re_compiled, query, REG_ICASE);
     } else {
-      assert(current_search_type == SEARCH_TYPE_FTS);
+      assert(current_search_type == search_type::FTS);
     }
 
     int result = do_search(direction, global, 0);
@@ -1546,25 +1546,25 @@ static int search(int direction, int global)
 
 static int search_global_forward(char cmd)
 {
-  current_search_type = SEARCH_TYPE_REGEX;
+  current_search_type = search_type::REGEX;
   return search(1, 1);
 }
 
 static int search_global_backward(char cmd)
 {
-  current_search_type = SEARCH_TYPE_REGEX;
+  current_search_type = search_type::REGEX;
   return search(0, 1);
 }
 
 static int search_local_forward(char cmd)
 {
-  current_search_type = SEARCH_TYPE_REGEX;
+  current_search_type = search_type::REGEX;
   return search(1, 0);
 }
 
 static int search_local_backward(char cmd)
 {
-  current_search_type = SEARCH_TYPE_REGEX;
+  current_search_type = search_type::REGEX;
   return search(0, 0);
 }
 
@@ -1603,7 +1603,7 @@ static int input_query(char key)
     return 1;
   } else if (key == (char)0x1b) {
     /* escape */
-    if (current_search_type == SEARCH_TYPE_REGEX
+    if (current_search_type == search_type::REGEX
 	&& re_compiled) {
       regfree(re_compiled);
       free(re_compiled);
