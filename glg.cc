@@ -172,19 +172,19 @@ static unsigned int row, col;
 
 #define LINES_INIT_SIZE 128
 
-enum {
-  STATE_DEFAULT,
-  STATE_INPUT_SEARCH_QUERY,
-  STATE_SEARCHING_QUERY,
-  STATE_INPUT_SEARCH_FILTER,
-  STATE_INPUT_SEARCH_FILTER2,
-  STATE_INPUT_SEARCH_DIRECTION,
-  STATE_LAUNCH_GIT_COMMAND,
-  STATE_READ_BRANCHNAME_FOR_CHECKOUT,
-  STATE_SHOW_CHANGED_FILES,
-  STATE_HELP,
+enum class main_loop_state {
+  DEFAULT,
+  INPUT_SEARCH_QUERY,
+  SEARCHING_QUERY,
+  INPUT_SEARCH_FILTER,
+  INPUT_SEARCH_FILTER2,
+  INPUT_SEARCH_DIRECTION,
+  LAUNCH_GIT_COMMAND,
+  READ_BRANCHNAME_FOR_CHECKOUT,
+  SHOW_CHANGED_FILES,
+  HELP,
 };
-static int state = STATE_DEFAULT;
+static main_loop_state state = main_loop_state::DEFAULT;
 
 enum class long_run {
   DEFAULT,
@@ -669,7 +669,7 @@ static void update_terminal_default(void)
 
     coloring(first_char, 1);
 
-    if (state == STATE_SEARCHING_QUERY) {
+    if (state == main_loop_state::SEARCHING_QUERY) {
       if (current_search_type == search_type::REGEX) {
 	int ret, mi, nli = ret_nl_index(line);
 	int rev = 0;
@@ -853,22 +853,22 @@ static void update_terminal_show_changed_files(void)
 static void update_terminal(void)
 {
   switch (state) {
-  case STATE_DEFAULT:
-  case STATE_INPUT_SEARCH_QUERY:
-  case STATE_SEARCHING_QUERY:
-  case STATE_INPUT_SEARCH_FILTER:
-  case STATE_INPUT_SEARCH_FILTER2:
-  case STATE_INPUT_SEARCH_DIRECTION:
-  case STATE_LAUNCH_GIT_COMMAND:
-  case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
+  case main_loop_state::DEFAULT:
+  case main_loop_state::INPUT_SEARCH_QUERY:
+  case main_loop_state::SEARCHING_QUERY:
+  case main_loop_state::INPUT_SEARCH_FILTER:
+  case main_loop_state::INPUT_SEARCH_FILTER2:
+  case main_loop_state::INPUT_SEARCH_DIRECTION:
+  case main_loop_state::LAUNCH_GIT_COMMAND:
+  case main_loop_state::READ_BRANCHNAME_FOR_CHECKOUT:
     update_terminal_default();
     break;
 
-  case STATE_SHOW_CHANGED_FILES:
+  case main_loop_state::SHOW_CHANGED_FILES:
     update_terminal_show_changed_files();
     break;
 
-  case STATE_HELP:
+  case main_loop_state::HELP:
     update_terminal_help();
     break;
 
@@ -1460,12 +1460,12 @@ static int _search(int key, int direction, int global)
   current_global = global;
 
   switch (state) {
-  case STATE_DEFAULT:
-  case STATE_SEARCHING_QUERY:
+  case main_loop_state::DEFAULT:
+  case main_loop_state::SEARCHING_QUERY:
     current_match_type = match_type::DEFAULT;
     match_filter = match_filter_default;
 
-  case STATE_INPUT_SEARCH_DIRECTION:
+  case main_loop_state::INPUT_SEARCH_DIRECTION:
     query_used = 0;
     bzero(query, QUERY_SIZE);
 
@@ -1475,20 +1475,20 @@ static int _search(int key, int direction, int global)
 	     current_match_type_str(),
 	     current_search_type == search_type::REGEX ? "regex" : "FTS");
 
-    state = STATE_INPUT_SEARCH_QUERY;
+    state = main_loop_state::INPUT_SEARCH_QUERY;
 
     break;
 
-  case STATE_INPUT_SEARCH_QUERY:
+  case main_loop_state::INPUT_SEARCH_QUERY:
     if (query_used + 1 == QUERY_SIZE) {
       bmprintf("search query is too long!");
-      state = STATE_DEFAULT;
+      state = main_loop_state::DEFAULT;
 
       goto end;
     }
 
     if (key == 0xd /* FIXME: \n ?*/) {
-      state = STATE_SEARCHING_QUERY;
+      state = main_loop_state::SEARCHING_QUERY;
 
       orig_place.commit = current;
       orig_place.head_line = current->head_line;
@@ -1508,7 +1508,7 @@ static int _search(int key, int direction, int global)
     break;
   }
 
-  if (state == STATE_SEARCHING_QUERY) {
+  if (state == main_loop_state::SEARCHING_QUERY) {
     if (current_search_type == search_type::REGEX) {
       if (re_compiled)
 	regfree(re_compiled);
@@ -1570,7 +1570,7 @@ static int search_local_backward(char cmd)
 
 static int search_progress(char cmd)
 {
-  if (state != STATE_SEARCHING_QUERY)
+  if (state != main_loop_state::SEARCHING_QUERY)
     return 0;
 
   assert(cmd == 'n' || cmd == 'p');
@@ -1614,7 +1614,7 @@ static int input_query(char key)
     bzero(query, QUERY_SIZE);
 
     bzero(bottom_message, bottom_message_size);
-    state = STATE_DEFAULT;
+    state = main_loop_state::DEFAULT;
     return 1;
   }
 
@@ -1840,7 +1840,7 @@ static int git_bisect(void)
 {
   if (!range_begin || !range_end) {
     bmprintf("bisect begin and end are required before format-patch");
-    state = STATE_DEFAULT;
+    state = main_loop_state::DEFAULT;
 
     return 1;
   }
@@ -1885,13 +1885,13 @@ static void git_checkout_b(void)
 static int launch_git_command(char cmd)
 {
   bmprintf("launch git command f (format-patch), r (rebase -i), c(checkout -b), b(bisect):");
-  state = STATE_LAUNCH_GIT_COMMAND;
+  state = main_loop_state::LAUNCH_GIT_COMMAND;
   return 1;
 }
 
 static int show_changed_files(char cmd)
 {
-  state = STATE_SHOW_CHANGED_FILES;
+  state = main_loop_state::SHOW_CHANGED_FILES;
   return 1;
 }
 
@@ -2010,17 +2010,17 @@ static int search_with_filter(char cmd)
 {
   bmprintf("input search filter(m(modified), a(at line), f(+++, ---): ");
   if (cmd == ',')
-    state = STATE_INPUT_SEARCH_FILTER;
+    state = main_loop_state::INPUT_SEARCH_FILTER;
   else
-    state = STATE_INPUT_SEARCH_FILTER2;
+    state = main_loop_state::INPUT_SEARCH_FILTER2;
 
   return 1;
 }
 
 static int stop_search(char cmd)
 {
-  if (state == STATE_SEARCHING_QUERY) {
-    state = STATE_DEFAULT;
+  if (state == main_loop_state::SEARCHING_QUERY) {
+    state = main_loop_state::DEFAULT;
     memset(bottom_message, 0, bottom_message_size);
   }
 
@@ -2164,7 +2164,7 @@ static int yank(char cmd)
 
 static int help(char cmd)
 {
-  state = STATE_HELP;
+  state = main_loop_state::HELP;
   return 1;
 }
 
@@ -2185,12 +2185,12 @@ static int search_filter_modified_line(char cmd)
   match_filter = match_filter_modified;
   current_match_type = match_type::MODIFIED;
 
-  if (state == STATE_INPUT_SEARCH_FILTER2) {
-    state = STATE_INPUT_SEARCH_DIRECTION;
+  if (state == main_loop_state::INPUT_SEARCH_FILTER2) {
+    state = main_loop_state::INPUT_SEARCH_DIRECTION;
     return search(1, 1);
   }
 
-  state = STATE_INPUT_SEARCH_DIRECTION;
+  state = main_loop_state::INPUT_SEARCH_DIRECTION;
 
   bmprintf("type: %s, input search direction (/, ?, \\, !):",
 	   current_match_type_str());
@@ -2203,12 +2203,12 @@ static int search_filter_at_line(char cmd)
   match_filter = match_filter_at;
   current_match_type = match_type::AT;
 
-  if (state == STATE_INPUT_SEARCH_FILTER2) {
-    state = STATE_INPUT_SEARCH_DIRECTION;
+  if (state == main_loop_state::INPUT_SEARCH_FILTER2) {
+    state = main_loop_state::INPUT_SEARCH_DIRECTION;
     return search(1, 1);
   }
 
-  state = STATE_INPUT_SEARCH_DIRECTION;
+  state = main_loop_state::INPUT_SEARCH_DIRECTION;
 
   bmprintf("type: %s, input search direction (/, ?, \\, !):",
 	   current_match_type_str());
@@ -2221,12 +2221,12 @@ static int search_filter_commit_message(char cmd)
   match_filter = match_filter_commit_message;
   current_match_type = match_type::COMMIT_MESSAGE;
 
-  if (state == STATE_INPUT_SEARCH_FILTER2) {
-    state = STATE_INPUT_SEARCH_DIRECTION;
+  if (state == main_loop_state::INPUT_SEARCH_FILTER2) {
+    state = main_loop_state::INPUT_SEARCH_DIRECTION;
     return search(1, 1);
   }
 
-  state = STATE_INPUT_SEARCH_DIRECTION;
+  state = main_loop_state::INPUT_SEARCH_DIRECTION;
 
   bmprintf("type: %s(not implemented yet!), input search direction (/, ?, \\, !):",
 	   current_match_type_str());
@@ -2239,12 +2239,12 @@ static int search_filter_file_line(char cmd)
   match_filter = match_filter_file;
   current_match_type = match_type::FILE;
 
-  if (state == STATE_INPUT_SEARCH_FILTER2) {
-    state = STATE_INPUT_SEARCH_DIRECTION;
+  if (state == main_loop_state::INPUT_SEARCH_FILTER2) {
+    state = main_loop_state::INPUT_SEARCH_DIRECTION;
     return search(1, 1);
   }
 
-  state = STATE_INPUT_SEARCH_DIRECTION;
+  state = main_loop_state::INPUT_SEARCH_DIRECTION;
 
   bmprintf("type: %s, input search direction (/, ?, \\, !):",
 	   current_match_type_str());
@@ -2256,7 +2256,7 @@ static int search_filter_cancel(char cmd)
 {
   match_filter = match_filter_default;
   current_match_type = match_type::DEFAULT;
-  state = STATE_DEFAULT;
+  state = main_loop_state::DEFAULT;
 
   return 1;
 }
@@ -2266,7 +2266,7 @@ static int search_filter_invalid(char cmd)
   bmprintf("invalid search type: %c\n", cmd);
   match_filter = match_filter_default;
   current_match_type = match_type::DEFAULT;
-  state = STATE_DEFAULT;
+  state = main_loop_state::DEFAULT;
 
   return 1;
 }
@@ -2286,7 +2286,7 @@ static int search_direction_cancel(char cmd)
 {
   match_filter = match_filter_default;
   current_match_type = match_type::DEFAULT;
-  state = STATE_DEFAULT;
+  state = main_loop_state::DEFAULT;
 
   return 1;
 }
@@ -2294,7 +2294,7 @@ static int search_direction_cancel(char cmd)
 static int search_direction_invalid(char cmd)
 {
   bmprintf("invalid direction specifier: %c\n", cmd);
-  state = STATE_DEFAULT;
+  state = main_loop_state::DEFAULT;
   return 1;
 }
 
@@ -2483,31 +2483,31 @@ int main(void)
 	die("reading key input failed");
 
       switch (state) {
-      case STATE_INPUT_SEARCH_FILTER:
-      case STATE_INPUT_SEARCH_FILTER2:
+      case main_loop_state::INPUT_SEARCH_FILTER:
+      case main_loop_state::INPUT_SEARCH_FILTER2:
 	ret = search_filter_ops_array[(int)cmd](cmd);
 	break;
 
-      case STATE_INPUT_SEARCH_QUERY:
+      case main_loop_state::INPUT_SEARCH_QUERY:
 	ret = input_query(cmd);
 	break;
 
-      case STATE_SEARCHING_QUERY:
-      case STATE_DEFAULT:
+      case main_loop_state::SEARCHING_QUERY:
+      case main_loop_state::DEFAULT:
 	ret = ops_array[(int)cmd](cmd);
 	break;
 
-      case STATE_INPUT_SEARCH_DIRECTION:
+      case main_loop_state::INPUT_SEARCH_DIRECTION:
 	ret = search_direction_ops_array[(int)cmd](cmd);
 	break;
 
-      case STATE_LAUNCH_GIT_COMMAND:
+      case main_loop_state::LAUNCH_GIT_COMMAND:
 	switch (cmd) {
 	case 'f': /* format-patch */
 	case 'F':
 	  ret = git_format_patch(cmd == 'F');
 	  /* return of this function means format-patch is canceled */
-	  state = STATE_DEFAULT;
+	  state = main_loop_state::DEFAULT;
 	  memset(bottom_message, 0, bottom_message_size);
 
 	  break;
@@ -2515,7 +2515,7 @@ int main(void)
 	  ret = git_rebase_i();
 	  break;
 	case 'c': /* checkout -b */
-	  state = STATE_READ_BRANCHNAME_FOR_CHECKOUT;
+	  state = main_loop_state::READ_BRANCHNAME_FOR_CHECKOUT;
 	  bmprintf("input branch name: ");
 	  break;
 	case 'b':  /* bisect */
@@ -2524,13 +2524,13 @@ int main(void)
 	case 'R': /* revert */
 	  ret = git_revert();
 	case 0x1b: /* escape */
-	  state = STATE_DEFAULT;
+	  state = main_loop_state::DEFAULT;
 	  break;
 	}
 
 	break;
 
-      case STATE_READ_BRANCHNAME_FOR_CHECKOUT:
+      case main_loop_state::READ_BRANCHNAME_FOR_CHECKOUT:
 	if (cmd == (char)0x7f) {
 	  /* backspace */
 	  if (branch_name_idx)
@@ -2539,7 +2539,7 @@ int main(void)
 	  /* escape */
 	  memset(checkout_branch_name, 0, 1024);
 	  branch_name_idx = 0;
-	  state = STATE_DEFAULT;
+	  state = main_loop_state::DEFAULT;
 
 	  memset(bottom_message, 0, bottom_message_size);
 
@@ -2557,16 +2557,16 @@ int main(void)
 
 	break;
 
-      case STATE_SHOW_CHANGED_FILES:
+      case main_loop_state::SHOW_CHANGED_FILES:
 	if (cmd == 'q') {
-	  state = STATE_DEFAULT;
+	  state = main_loop_state::DEFAULT;
 	  ret = 1;
 	}
 	break;
 
-      case STATE_HELP:
+      case main_loop_state::HELP:
 	if (cmd == 'q') {
-	  state = STATE_DEFAULT;
+	  state = main_loop_state::DEFAULT;
 	  ret = 1;
 	} else
 	  ret = 0;
