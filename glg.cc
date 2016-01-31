@@ -1619,7 +1619,7 @@ static int git_format_patch(bool force)
   int ret;
   char key = ' ';
   bool retry = false;
- retry_cover_letter:;
+ retry_cover_letter:
   bool need_cover_letter = false;
   move(row, 0);
   for (int i = 0; i < col; i++) printw(" ");
