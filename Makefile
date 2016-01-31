@@ -18,7 +18,8 @@ install: glg
 	sudo cp glg /usr/local/bin
 
 cscope:
-	find . -name "*.[ch]" > cscope.files
+	find . -name "*.cc" > cscope.files
+	find . -name "*.hh" >> cscope.files
 	cscope -b -q
 
 clean:
