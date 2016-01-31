@@ -42,6 +42,10 @@
 
 using namespace std;
 
+#include "util.hh"
+#include "git.hh"
+#include "commit.hh"
+
 #define GIT_LESS_DEBUG
 #define DEBUG_FILE_NAME "/tmp/git-less-debug"
 
@@ -49,76 +53,9 @@ extern int errno;
 
 static bool running = true;
 
-static char dying_msg[1024];
+char dying_msg[1024];
 
-enum class commit_cached_state {
-  PURGED,
-  FILLED,
-};
-
-struct commit_cached {
-  commit_cached_state state;
-
-  char *text;
-  unsigned int text_size;
-
-  char **lines;
-  int nr_lines, lines_size;
-};
-
-struct commit {
-  struct commit_cached cached;
-
-  int head_line;
-
-  /*
-   * caution:
-   * prev means previous commit of the commit object,
-   * next means next commit of the commit object.
-   */
-  struct commit *prev, *next;
-
-  /* size_next points next commit with smaller text size */
-  struct commit *size_next;
-  bool size_order_initialized;
-
-  char *commit_id, *summary;
-
-  char **file_list;
-  int nr_file_list, file_list_size;
-
-  char **commit_log;
-  int commit_log_lines;
-};
-
-static struct commit *current;
-
-#define die(fmt, arg...)				\
-  do {							\
-    int len;						\
-    len = sprintf(dying_msg,				\
-		  "line %d: fatal error, " fmt "\n",	\
-		  __LINE__, ##arg);			\
-    len += sprintf(dying_msg + len, "errno: %s\n",	\
-		   strerror(errno));			\
-    if (current)					\
-      len += sprintf(dying_msg + len,			\
-		     "current commit: %s\n",		\
-		     current->commit_id);		\
-    exit(1);						\
-  } while (0)
-
-#ifdef assert
-#undef assert
-#endif
-
-#define assert(expr)					\
-  ((expr) ?						\
-   (void)0 :						\
-   (sprintf(dying_msg, "assert: %s:%d: %s: "		\
-	    "Asserting `%s' failed.\n",			\
-	    __FILE__, __LINE__, __func__, #expr),	\
-    exit(1)))
+struct commit *current;
 
 #ifdef GIT_LESS_DEBUG
 static int debug_fd;
@@ -2329,36 +2266,6 @@ static void exit_handler(void)
   fprintf(stderr, dying_msg);
 }
 
-static void launch_git_log(void)
-{
-  int pipefds[2];
-  if (pipe(pipefds))
-    die("pipe() failed\n");
-
-  pid_t pid = fork();
-  switch (pid) {
-  case 0:
-    setsid();	/* for handling ^c correctly */
-
-    close(1);
-    dup(pipefds[1]);
-    close(pipefds[0]);
-
-    if (execlp("git", "git", "log", "--pretty=format:%H", NULL))
-      die("execlp() failed\n");
-
-    break;
-  case -1:
-    die("fork failed\n");
-    break;
-  default:
-    close(pipefds[1]);
-    close(0);
-    dup(pipefds[0]); /* connect git log to stdin */
-    break;
-  }
-}
-
 int main(void)
 {
   int i, sigfd;
@@ -2378,7 +2285,7 @@ int main(void)
 
 #endif
 
-  launch_git_log();
+  launch_git_log(0);
 
   bottom_message = static_cast<char *>(xalloc(bottom_message_size));
   match_array = static_cast<regmatch_t *>(xalloc(match_array_size * sizeof(regmatch_t)));

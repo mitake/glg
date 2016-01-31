@@ -1,6 +1,6 @@
 
-OBJS = glg.o
-HDRS =
+OBJS = glg.o git.o
+HDRS = git.hh util.hh commit.hh
 
 CFLAGS = -O2 -Wall -std=c++11
 
