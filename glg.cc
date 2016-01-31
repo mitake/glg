@@ -1901,13 +1901,13 @@ static int quit(char cmd)
   return 0;
 }
 
-enum {
-  RANGE_INIT,
-  RANGE_BEGIN_SPECIFIED,
-  RANGE_END_SPECIFIED,
-  RANGE_SPECIFIED
+enum class range_state {
+  INIT,
+  BEGIN_SPECIFIED,
+  END_SPECIFIED,
+  SPECIFIED
 };
-static int range_state = RANGE_INIT;
+static range_state range_state = range_state::INIT;
 
 static int specify_range(char cmd)
 {
@@ -1916,55 +1916,55 @@ static int specify_range(char cmd)
   begin_set = end_set = 0;
 
   switch (range_state) {
-  case RANGE_INIT:
+  case range_state::INIT:
     if (cmd == '[') {
       range_begin = current;
-      range_state = RANGE_BEGIN_SPECIFIED;
+      range_state = range_state::BEGIN_SPECIFIED;
 
       begin_set = 1;
     } else {
       assert(cmd == ']');
 
       range_end = current;
-      range_state = RANGE_BEGIN_SPECIFIED;
+      range_state = range_state::BEGIN_SPECIFIED;
 
       end_set = 1;
     }
 
     break;
-  case RANGE_BEGIN_SPECIFIED:
+  case range_state::BEGIN_SPECIFIED:
     if (cmd == '[') {
       range_begin = current;
-      range_state = RANGE_BEGIN_SPECIFIED;
+      range_state = range_state::BEGIN_SPECIFIED;
 
       begin_set = 1;
     } else {
       assert(cmd == ']');
 
       range_end = current;
-      range_state = RANGE_SPECIFIED;
+      range_state = range_state::SPECIFIED;
 
       end_set = 1;
     }
 
     break;
-  case RANGE_END_SPECIFIED:
+  case range_state::END_SPECIFIED:
     if (cmd == '[') {
       range_begin = current;
-      range_state = RANGE_SPECIFIED;
+      range_state = range_state::SPECIFIED;
 
       begin_set = 1;
     } else {
       assert(cmd == ']');
 
       range_end = current;
-      range_state = RANGE_END_SPECIFIED;
+      range_state = range_state::END_SPECIFIED;
 
       end_set = 1;
     }
 
     break;
-  case RANGE_SPECIFIED:
+  case range_state::SPECIFIED:
     if (cmd == '[') {
       range_begin = current;
       begin_set = 1;
@@ -1981,7 +1981,7 @@ static int specify_range(char cmd)
     break;
   }
 
-  if (range_state == RANGE_SPECIFIED) {
+  if (range_state == range_state::SPECIFIED) {
     bmprintf("range specified");
     return 1;
   }
@@ -1999,7 +1999,7 @@ static int specify_range(char cmd)
 static int clear_range(char cmd)
 {
   range_begin = range_end = NULL;
-  range_state = RANGE_INIT;
+  range_state = range_state::INIT;
 
   bmprintf("range cleared");
 
