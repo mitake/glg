@@ -47,7 +47,7 @@ using namespace std;
 
 extern int errno;
 
-static int running = 1;
+static bool running = true;
 
 static char dying_msg[1024];
 
@@ -1897,7 +1897,7 @@ static int show_changed_files(char cmd)
 
 static int quit(char cmd)
 {
-  running = 0;
+  running = false;
   return 0;
 }
 
