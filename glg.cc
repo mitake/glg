@@ -186,12 +186,12 @@ enum {
 };
 static int state = STATE_DEFAULT;
 
-enum long_run {
-  LONG_RUN_DEFAULT,
-  LONG_RUN_RUNNING,
-  LONG_RUN_STOPPED,
+enum class long_run {
+  DEFAULT,
+  RUNNING,
+  STOPPED,
 };
-static enum long_run state_long_run = LONG_RUN_DEFAULT;
+static long_run state_long_run = long_run::DEFAULT;
 /*
  * long_run_command(): called in the main loop when state_long_run == true
  * return 1 when the iteration ends. return 0 for continuing.
@@ -887,9 +887,9 @@ static void signal_handler(int signum)
     break;
 
   case SIGINT:
-    if (state_long_run == LONG_RUN_RUNNING)
+    if (state_long_run == long_run::RUNNING)
       /* FIXME: use signalfd */
-      state_long_run = LONG_RUN_STOPPED;
+      state_long_run = long_run::STOPPED;
     break;
 
   default:
@@ -1107,7 +1107,7 @@ static void long_run_command_compl_visit_root(bool stopped)
 
   long_run_command = NULL;
   long_run_command_compl = NULL;
-  state_long_run = LONG_RUN_DEFAULT;
+  state_long_run = long_run::DEFAULT;
 }
 
 static int show_root(char cmd)
@@ -1131,8 +1131,8 @@ static int show_root(char cmd)
   long_run_command = long_run_command_visit_root;
   long_run_command_compl = long_run_command_compl_visit_root;
 
-  assert(state_long_run == LONG_RUN_DEFAULT);
-  state_long_run = LONG_RUN_RUNNING;
+  assert(state_long_run == long_run::DEFAULT);
+  state_long_run = long_run::RUNNING;
 
   bmprintf("visiting root commit...");
   return 1;
@@ -1409,8 +1409,8 @@ static int do_search(int direction, int global, int prog)
   long_run_command = long_run_command_do_search;
   long_run_command_compl = long_run_command_compl_do_search;
 
-  assert(state_long_run == LONG_RUN_DEFAULT);
-  state_long_run = LONG_RUN_RUNNING;
+  assert(state_long_run == long_run::DEFAULT);
+  state_long_run = long_run::RUNNING;
   search_found = false;
 
   return -1;
@@ -1528,7 +1528,7 @@ static int _search(int key, int direction, int global)
       update_query_bm();
       break;
     case -1:	/* do nothing, continue */
-      assert(state_long_run == LONG_RUN_RUNNING);
+      assert(state_long_run == long_run::RUNNING);
       return 0;
     default:
       die("invalid return value from do_search(): %d\n", result);
@@ -2425,7 +2425,7 @@ int main(void)
   while (running) {
     int ret = 0, pret;
 
-    pret = poll(pfds, 2, state_long_run == LONG_RUN_RUNNING ? 0 : -1);
+    pret = poll(pfds, 2, state_long_run == long_run::RUNNING ? 0 : -1);
     if (pret < 0)
       die("poll() failed");
 
@@ -2440,23 +2440,23 @@ int main(void)
       signal_handler(siginfo.ssi_signo);
     }
 
-    if (state_long_run != LONG_RUN_DEFAULT) {
+    if (state_long_run != long_run::DEFAULT) {
       assert(long_run_command);
       assert(long_run_command_compl);
 
       switch (state_long_run) {
-      case LONG_RUN_RUNNING:
+      case long_run::RUNNING:
 	if (long_run_command()) {
 	  long_run_command_compl(false);
 	  goto long_run_end;
 	}
 
 	continue;
-      case LONG_RUN_STOPPED:
+      case long_run::STOPPED:
 	long_run_command_compl(true);
 
       long_run_end:
-	state_long_run = LONG_RUN_DEFAULT;
+	state_long_run = long_run::DEFAULT;
 	long_run_command = NULL;
 	long_run_command_compl = NULL;
 
