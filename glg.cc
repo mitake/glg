@@ -51,13 +51,13 @@ static int running = 1;
 
 static char dying_msg[1024];
 
-enum commit_cached_state {
-  CACHED_STATE_PURGED,
-  CACHED_STATE_FILLED,
+enum class commit_cached_state {
+  PURGED,
+  FILLED,
 };
 
 struct commit_cached {
-  enum commit_cached_state state;
+  commit_cached_state state;
 
   char *text;
   unsigned int text_size;
@@ -452,7 +452,7 @@ static void free_commits(size_t size)
   for (struct commit *p = size_order_head; p; p = p->size_next) {
     struct commit_cached *pc = raw_get_cached(p);
 
-    if (pc->state == CACHED_STATE_PURGED)
+    if (pc->state == commit_cached_state::PURGED)
       continue;
 
     free(pc->text);
@@ -460,7 +460,7 @@ static void free_commits(size_t size)
     free(pc->lines);
     pc->lines = NULL;
 
-    pc->state = CACHED_STATE_PURGED;
+    pc->state = commit_cached_state::PURGED;
 
     freed += pc->text_size;
     if (size < freed)
@@ -595,13 +595,13 @@ static void read_commit_with_git_show(struct commit *c)
 
 static struct commit_cached *get_cached(struct commit *c)
 {
-  if (c->cached.state == CACHED_STATE_FILLED)
+  if (c->cached.state == commit_cached_state::FILLED)
     return &c->cached;
 
   assert(!c->cached.text);
   read_commit_with_git_show(c);
   init_commit_lines(c);
-  c->cached.state = CACHED_STATE_FILLED;
+  c->cached.state = commit_cached_state::FILLED;
 
   return &c->cached;
 }
@@ -966,7 +966,7 @@ static void read_commit(void)
 
   new_commit->commit_id = static_cast<char *>(xalloc(41));
   memcpy(new_commit->commit_id, commit_id, 41);
-  new_commit->cached.state = CACHED_STATE_PURGED;
+  new_commit->cached.state = commit_cached_state::PURGED;
 
   return;
 }
