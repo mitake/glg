@@ -1198,8 +1198,10 @@ static int match_commit_regex(struct commit *c, int direction, int prog)
 
   do {
     line = cached->lines[i];
-    nli = ret_nl_index(line);
+    if (line == nullptr)
+      return 0;
 
+    nli = ret_nl_index(line);
     line[nli] = '\0';
     result = match_line(line);
     line[nli] = '\n';
