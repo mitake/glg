@@ -42,12 +42,13 @@
 
 using namespace std;
 
+#include <getopt.h>
+
 #include "util.hh"
 #include "git.hh"
 #include "commit.hh"
 
-#define GIT_LESS_DEBUG
-#define DEBUG_FILE_NAME "/tmp/git-less-debug"
+static char *debug_file_path;
 
 extern int errno;
 
@@ -56,20 +57,6 @@ static bool running = true;
 char dying_msg[1024];
 
 struct commit *current;
-
-#ifdef GIT_LESS_DEBUG
-static int debug_fd;
-
-#define dbgprintf(fmt, arg...)			\
-  do {						\
-    dprintf(debug_fd, "line %d: " fmt "\n",	\
-	    __LINE__, ##arg);			\
-  } while (0)
-#else
-
-#define dbgprintf(fmt, arg...) do { } while (0)
-
-#endif
 
 static void *xalloc(size_t size)
 {
@@ -159,20 +146,12 @@ static unsigned int match_array_size = MATCH_ARRAY_INIT_SIZE;
 	     fmt, ##arg);				\
   } while (0)
 
-#ifdef GIT_LESS_DEBUG
-
 static FILE* debug_file;
 
 #define debug_printf(fmt, arg...)		\
   do {						\
     fprintf(debug_file, fmt, ##arg);		\
   } while (0)
-
-#else
-
-#define debug_printf(fmt, arg...) do { } while (0)
-
-#endif	/* GIT_LESS_DEBUG */
 
 static void update_row_col(void)
 {
@@ -2256,10 +2235,6 @@ static void exit_handler(void)
 {
   addch('\n');
 
-#ifdef GIT_LESS_DEBUG
-  /* unlink(DEBUG_FILE_NAME); */
-#endif
-
   if (clipboard_pid)
     kill(clipboard_pid, SIGKILL);
 
@@ -2268,24 +2243,52 @@ static void exit_handler(void)
   fprintf(stderr, dying_msg);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
   int i, sigfd;
   char cmd;
   struct pollfd pfds[2];
+  int show_merge_commits;	// TODO: not implemented yet
 
-#ifdef GIT_LESS_DEBUG
+  while (1) {
+    static struct option long_options[] =
+    {
+      {"show-merge-commits", no_argument, &show_merge_commits, 0},
+      {"debug-file-path", required_argument, 0, 'd'},
+      {"help", no_argument, 0, 'h'},
+      {0, 0, 0, 0}
+    };
+    int option_index = 0;
+    int c = getopt_long(argc, argv, "d:h", long_options, &option_index);
 
-  unlink(DEBUG_FILE_NAME);
-  debug_fd = open(DEBUG_FILE_NAME, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-  if (debug_fd < 0)
-    die("failed to open() file: %s for debugging", DEBUG_FILE_NAME);
+    if (c == -1)
+      break;
 
-  debug_file = fdopen(debug_fd, "w");
-  if (!debug_file)
-    die("failed fdopen() for debug_file");
+    switch (c) {
+    case 'd':
+      debug_file_path = optarg;
+      break;
+    case 'h':
+      printf("TODO: help\n");
+      exit(1);
+      break;
+    default:
+      printf("unknown option (%c)\n", c);
+      exit(1);
+      break;
+    }
+  }
 
-#endif
+  if (debug_file_path) {
+    unlink(debug_file_path);
+    int debug_fd = open(debug_file_path, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+    if (debug_fd < 0)
+      die("failed to open() file: %s for debugging", debug_file_path);
+
+    debug_file = fdopen(debug_fd, "w");
+    if (!debug_file)
+      die("failed fdopen() for debug_file");
+  }
 
   launch_git_log(0);
 
