@@ -27,6 +27,8 @@
 
 #include "commit.hh"
 
+#include <string>
+
 extern char dying_msg[1024];
 
 extern struct commit *current;

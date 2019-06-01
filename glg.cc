@@ -39,6 +39,7 @@
 #include <ncurses.h>
 
 #include <string>
+#include <regex>
 
 using namespace std;
 
@@ -2040,6 +2041,18 @@ void yank_with_xclip(char *buf, int buf_len, const char *board) {
     die("execlp() failed\n");
 }
 
+static string get_jira_ticket(struct commit_cached *c) {
+  regex ticket_regex("(\\w+-\\d+)");
+  smatch match;
+  string msg = string(c->text);
+
+  if (regex_search(msg, match, ticket_regex)) {
+    return match[0];
+  }
+
+  return "";
+}
+
 static int yank(char cmd)
 {
   if (clipboard_pid)
@@ -2047,14 +2060,12 @@ static int yank(char cmd)
 
   char yank_target;
   move(row, 0);
-  printw("yank what? c (commit ID), e (entire with editor) :");
+  printw("yank what? c (commit ID), j (jira ticket if exists), e (entire with editor) :");
   refresh();
 
   int ret = read(tty_fd, &yank_target, 1);
   if (ret != 1)
     die("read() failed\n");
-  if (yank_target != 'c' || yank_target != 'e') {
-  }
 
   char *copy_buf;
   int copy_buf_len;
@@ -2066,6 +2077,17 @@ static int yank(char cmd)
     break;
   case 'e':
     copy_buf = copy_with_editor(current, &copy_buf_len);
+    break;
+  case 'j':
+    {
+      string ticket = get_jira_ticket(get_cached(current));
+      if (ticket.size() == 0) {
+	bmprintf("this commit doesn't have a jira ticket number\n");
+	return 1;
+      }
+      copy_buf = strdup(ticket.c_str());
+      copy_buf_len = ticket.size() + 1;
+    }
     break;
   default:
     bmprintf("unknown yank target: %c\n", yank_target);
